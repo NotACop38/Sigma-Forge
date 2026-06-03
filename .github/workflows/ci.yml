@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: lint • convert • fire-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Sync dependencies (incl. sigma backends + pipelines)
+        run: uv sync --frozen
+
+      - name: Confirm sigma plugins
+        run: uv run sigma list targets
+
+      - name: Ruff (lint)
+        run: uv run ruff check src tests
+
+      - name: Mypy (type check)
+        run: uv run mypy
+
+      - name: Convert every rule to Splunk SPL and Sentinel KQL (fail on error)
+        run: uv run sigma-forge convert --all --check
+
+      - name: Pytest (lint + convert goldens + fire-tests)
+        run: uv run pytest
+
+      - name: Build ATT&CK Navigator layer + heatmap
+        run: uv run sigma-forge coverage --layer docs/attack-layer.json --png docs/images/attack-layer.png
+
+      - name: Upload ATT&CK Navigator layer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: attack-navigator-layer
+          path: docs/attack-layer.json
+
+  secret-scan:
+    name: secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
