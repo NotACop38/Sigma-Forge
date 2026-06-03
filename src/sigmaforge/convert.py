@@ -77,7 +77,24 @@ def _classic_pipeline(target: str) -> ProcessingPipeline:
 @cache
 def _llm_pipeline(target: str) -> ProcessingPipeline:
     fname = {"splunk": "llm_splunk.yml", "kusto": "llm_kusto.yml"}[target]
-    return ProcessingPipeline.from_yaml((PIPELINES_ROOT / fname).read_text(encoding="utf-8"))
+    pipeline = ProcessingPipeline.from_yaml((PIPELINES_ROOT / fname).read_text(encoding="utf-8"))
+    if target == "kusto":
+        # The Kusto backend prepends the destination table via a postprocessing
+        # transformation that is not YAML-registerable, so we attach it here. This
+        # lets the custom `llm_app` logsource emit `LLMAppLogs_CL | where ...`.
+        from sigma.pipelines.kusto_common.postprocessing import (
+            PrependQueryTablePostprocessingTransformation,
+            QueryPostprocessingItem,
+        )
+
+        pipeline.postprocessing_items = [
+            *pipeline.postprocessing_items,
+            QueryPostprocessingItem(
+                transformation=PrependQueryTablePostprocessingTransformation(),
+                identifier="llm_prepend_query_table",
+            ),
+        ]
+    return pipeline
 
 
 def _pipeline_for(kind: str, target: str) -> ProcessingPipeline:

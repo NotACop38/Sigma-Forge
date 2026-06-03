@@ -1,0 +1,2 @@
+LLMAppLogs_CL
+| where PromptTokens >= 8000 or CompletionTokens >= 8000
