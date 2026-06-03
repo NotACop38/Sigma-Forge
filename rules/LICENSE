@@ -1,0 +1,28 @@
+Detection Rule License (DRL) 1.1
+
+Copyright (c) 2026 sigma-forge
+
+The detection rules in this directory are released under the Detection Rule
+License (DRL) 1.1, the same permissive license used by the SigmaHQ project for
+community detection content.
+
+You are free to:
+
+  - Use the rules for any purpose, including commercially.
+  - Copy and redistribute the rules in any medium or format.
+  - Adapt, remix, transform, and build upon the rules.
+
+Under the following terms:
+
+  - Attribution — You must give appropriate credit to the original author(s),
+    provide a link to this license, and indicate if changes were made.
+  - No additional restrictions — You may not apply legal terms or technological
+    measures that legally restrict others from doing anything the license
+    permits.
+
+THE DETECTION RULES ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED. The authors are not liable for any claim, damages, or other
+liability arising from the use of these rules.
+
+For the canonical text of the Detection Rule License, see:
+https://github.com/SigmaHQ/Detection-Rule-License
