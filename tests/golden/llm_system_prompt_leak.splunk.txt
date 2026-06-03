@@ -1,0 +1,1 @@
+llm_completion IN ("*You are a helpful assistant*", "*system prompt:*", "*my instructions are*", "*my system prompt*", "*I was instructed to*", "*BEGIN SYSTEM PROMPT*")

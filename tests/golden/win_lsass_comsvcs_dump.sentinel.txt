@@ -1,0 +1,2 @@
+imProcessCreate
+| where TargetProcessName endswith "\\rundll32.exe" and (TargetProcessCommandLine contains "comsvcs" and TargetProcessCommandLine contains "MiniDump")

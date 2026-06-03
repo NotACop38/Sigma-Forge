@@ -1,0 +1,2 @@
+DeviceProcessEvents
+| where FolderPath endswith "\\rundll32.exe" and (ProcessCommandLine contains "comsvcs" and ProcessCommandLine contains "MiniDump")

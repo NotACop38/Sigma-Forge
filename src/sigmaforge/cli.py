@@ -54,13 +54,17 @@ def convert(
     ),
 ) -> None:
     """Convert Sigma rules to Splunk SPL and Microsoft Sentinel/Defender KQL."""
+    if target is not None and target not in convert_mod.TARGETS:
+        valid = ", ".join(convert_mod.TARGETS)
+        console.print(f"[red]Unknown target '{target}'.[/red] Valid targets: {valid}.")
+        raise typer.Exit(code=2)
+
     rule_paths = None if (all_rules or not paths) else list(paths)
     files = convert_mod.iter_rule_files(rule_paths)
     if not files:
         console.print("[yellow]No rules found.[/yellow]")
         raise typer.Exit()
 
-    targets = (target,) if target else convert_mod.TARGETS
     failures = 0
     for f in files:
         console.rule(f"[bold cyan]{f.stem}")
@@ -70,11 +74,14 @@ def convert(
             failures += 1
             console.print(f"[red]conversion failed:[/red] {exc}")
             continue
-        for t in targets:
-            label = convert_mod.TARGET_LABELS[t]
-            lang = "sql" if t == "kusto" else "text"
-            console.print(f"[bold]{label}[/bold]")
-            console.print(Syntax(result.query(t), lang, theme="ansi_dark", word_wrap=True))
+        wanted = [target] if target else list(result.queries)
+        for t in wanted:
+            if t not in result.queries:
+                console.print(f"[dim]{convert_mod.TARGET_LABELS.get(t, t)}: n/a for this rule[/dim]")
+                continue
+            tgt = convert_mod.TARGETS[t]
+            console.print(f"[bold]{tgt.label}[/bold]")
+            console.print(Syntax(result.query(t), tgt.lang, theme="ansi_dark", word_wrap=True))
 
     if check and failures:
         console.print(f"[red]{failures} rule(s) failed to convert.[/red]")
@@ -128,15 +135,22 @@ def evaluate(
 def coverage(
     layer: Path = typer.Option(Path("docs/attack-layer.json"), help="Navigator layer JSON output."),
     png: Path = typer.Option(Path("docs/images/attack-layer.png"), help="Heatmap PNG output."),
+    site: Path | None = typer.Option(
+        None, "--site", help="Also build a static coverage site (for GitHub Pages) in this dir."
+    ),
 ) -> None:
     """Emit an ATT&CK Navigator layer and render the static heatmap PNG."""
     from . import coverage as coverage_mod
 
-    summary = coverage_mod.build_coverage(layer_path=layer, png_path=png)
-    console.print(
-        f"[green]Wrote {layer}[/green] ({summary.attack_technique_count} ATT&CK techniques) "
-        f"and [green]{png}[/green]."
-    )
+    if site is not None:
+        summary = coverage_mod.build_site(site)
+        console.print(f"[green]Built coverage site in {site}[/green].")
+    else:
+        summary = coverage_mod.build_coverage(layer_path=layer, png_path=png)
+        console.print(
+            f"[green]Wrote {layer}[/green] ({summary.attack_technique_count} ATT&CK techniques) "
+            f"and [green]{png}[/green]."
+        )
     if summary.atlas_technique_count:
         console.print(
             f"[cyan]ATLAS coverage:[/cyan] {summary.atlas_technique_count} technique(s) "

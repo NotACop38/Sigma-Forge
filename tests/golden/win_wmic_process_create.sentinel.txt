@@ -1,0 +1,2 @@
+imProcessCreate
+| where TargetProcessName endswith "\\wmic.exe" and (TargetProcessCommandLine contains "process" and TargetProcessCommandLine contains "call" and TargetProcessCommandLine contains "create")

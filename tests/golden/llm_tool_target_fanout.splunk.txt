@@ -1,0 +1,6 @@
+tool_name="*_request"
+
+| bin _time span=5m
+| stats dc(tool_target_host) as value_count by _time user_id
+
+| search value_count >= 5

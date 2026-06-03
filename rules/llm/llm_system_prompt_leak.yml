@@ -1,0 +1,37 @@
+title: LLM System Prompt Leakage in Completion
+id: 12762e92-4b4e-4a9a-b225-51437a516dd6
+status: experimental
+description: >
+  Detects an LLM completion that appears to disclose its own system prompt or
+  internal instructions (e.g. echoing "You are a helpful assistant", "system
+  prompt:", or "my instructions are"), indicating system prompt leakage. Maps
+  to OWASP Top 10 for LLM Applications LLM07 (System Prompt Leakage) and MITRE
+  ATLAS Discover LLM System Information / LLM Data Leakage. Authored against the
+  synthetic llm_app schema.
+author: sigma-forge
+date: 2026-06-03
+references:
+  - https://owasp.org/www-project-top-10-for-large-language-model-applications/
+  - https://atlas.mitre.org/techniques/AML.T0069.002
+  - https://atlas.mitre.org/techniques/AML.T0057
+logsource:
+  product: llm_app
+  category: gateway
+detection:
+  selection:
+    llm.completion|contains:
+      - 'You are a helpful assistant'
+      - 'system prompt:'
+      - 'my instructions are'
+      - 'my system prompt'
+      - 'I was instructed to'
+      - 'BEGIN SYSTEM PROMPT'
+  condition: selection
+falsepositives:
+  - Assistants legitimately explaining their role at a high level.
+level: medium
+tags:
+  - attack.credential-access
+  - owasp.llm07
+  - atlas.t0069.002
+  - atlas.t0057

@@ -1,0 +1,4 @@
+[
+  {"timestamp":"2026-06-03T13:22:00Z","user.id":"user-7703","app.id":"support-assistant","llm.model":"forge-instruct-1","llm.prompt":"How do I reset my password?","llm.completion":"You can reset your password from the account settings page.","llm.prompt_tokens":10,"llm.completion_tokens":18,"request.source_ip":"203.0.113.95"},
+  {"timestamp":"2026-06-03T13:23:00Z","user.id":"user-7704","app.id":"support-assistant","llm.model":"forge-instruct-1","llm.prompt":"What is your refund policy?","llm.completion":"Refunds are available within 30 days of purchase.","llm.prompt_tokens":9,"llm.completion_tokens":14,"request.source_ip":"203.0.113.96"}
+]

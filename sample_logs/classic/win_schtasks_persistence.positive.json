@@ -1,0 +1,4 @@
+[
+  {"EventID":1,"Image":"C:\\Windows\\System32\\schtasks.exe","CommandLine":"schtasks /create /tn Updater /tr C:\\Users\\Public\\u.exe /sc onlogon","ParentImage":"C:\\Windows\\System32\\cmd.exe"},
+  {"EventID":1,"Image":"C:\\Windows\\System32\\schtasks.exe","CommandLine":"schtasks.exe /Create /SC HOURLY /TN beacon /TR powershell.exe","ParentImage":"C:\\Users\\Public\\evil.exe"}
+]

@@ -1,0 +1,36 @@
+title: LLM Excessive Agency — Sensitive Tool Invocation
+id: b483d364-66ff-4813-a542-25a8a630c693
+status: experimental
+description: >
+  Detects an LLM-driven agent invoking a high-impact tool (shell/command
+  execution, file deletion, email send, or HTTP request) against an internal
+  or metadata host, indicating excessive agency / unsafe tool use. Maps to
+  OWASP Top 10 for LLM Applications LLM06 (Excessive Agency) and MITRE ATLAS
+  AI Agent Tool Invocation. Uses the synthetic tool.* fields of the llm_app
+  schema.
+author: sigma-forge
+date: 2026-06-03
+references:
+  - https://owasp.org/www-project-top-10-for-large-language-model-applications/
+  - https://atlas.mitre.org/techniques/AML.T0053
+logsource:
+  product: llm_app
+  category: gateway
+detection:
+  selection_tool:
+    tool.name:
+      - 'shell_exec'
+      - 'run_command'
+      - 'delete_file'
+      - 'send_email'
+      - 'http_request'
+  selection_target:
+    tool.target_host|re: '(\.internal\b|\.local\b|^10\.|^192\.168\.|^169\.254\.169\.254$)'
+  condition: selection_tool and selection_target
+falsepositives:
+  - Sanctioned automations that legitimately call internal tools; allowlist them.
+level: high
+tags:
+  - attack.execution
+  - owasp.llm06
+  - atlas.t0053

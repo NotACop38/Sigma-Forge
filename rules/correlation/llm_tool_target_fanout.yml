@@ -1,0 +1,50 @@
+title: Agent tool invocation (base)
+id: 29a3f77c-23d5-4167-8cc6-1dd3460dfe60
+name: llm_agent_tool_invocation
+status: experimental
+description: >
+  Base detection for the tool fan-out correlation: any LLM-agent tool
+  invocation that targets a host. Authored against the synthetic llm_app schema.
+author: sigma-forge
+date: 2026-06-03
+logsource:
+  product: llm_app
+  category: gateway
+detection:
+  selection:
+    tool.name|endswith: '_request'
+  condition: selection
+level: informational
+tags:
+  - attack.execution
+  - owasp.llm06
+  - atlas.t0053
+---
+title: LLM Agent Fans Out Across Many Hosts
+id: bcc17d3b-db10-4d3e-9cb0-29446139d7be
+status: experimental
+description: >
+  Correlates a single user.id whose LLM agent issues tool requests against many
+  distinct target hosts within a short window — indicative of automated
+  scanning / excessive agency rather than normal interactive use. Maps to OWASP
+  LLM06 (Excessive Agency) and MITRE ATLAS AI Agent Tool Invocation.
+author: sigma-forge
+date: 2026-06-03
+correlation:
+  type: value_count
+  rules:
+    - llm_agent_tool_invocation
+  group-by:
+    - user.id
+  timespan: 5m
+  condition:
+    gte: 5
+    field: tool.target_host
+falsepositives:
+  - Batch automations with a legitimately broad host footprint; allowlist them.
+level: high
+tags:
+  - attack.execution
+  - attack.discovery
+  - owasp.llm06
+  - atlas.t0053

@@ -1,0 +1,4 @@
+[
+  {"timestamp":"2026-06-03T13:10:00Z","user.id":"user-6601","app.id":"ops-agent","llm.model":"forge-instruct-1","llm.prompt":"clean up disk","llm.completion":"calling delete_file","tool.name":"delete_file","tool.target_host":"fileserver.internal","request.source_ip":"198.51.100.71"},
+  {"timestamp":"2026-06-03T13:11:00Z","user.id":"user-6602","app.id":"ops-agent","llm.model":"forge-instruct-1","llm.prompt":"check metadata","llm.completion":"calling http_request","tool.name":"http_request","tool.target_host":"169.254.169.254","request.source_ip":"198.51.100.72"}
+]

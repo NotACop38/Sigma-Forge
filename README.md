@@ -25,21 +25,23 @@
 ## What it is
 
 **sigma-forge** is a detection-as-code starter that authors vendor-neutral **Sigma** rules and
-converts them to **Splunk SPL** and **Microsoft Sentinel/Defender KQL** with pySigma. Every rule
-is **fire-tested in CI** against synthetic JSON logs — so coverage claims are *proven*, not
-asserted — and tagged to **MITRE ATT&CK** and **MITRE ATLAS**. Alongside a classic host-detection
-pack, it ships an **AI/LLM-application threat pack** (OWASP Top 10 for LLM + ATLAS) and an
-optional **local-first LLM rule drafter** gated by a deterministic validator.
+converts them to **Splunk SPL** and **Microsoft Sentinel (ASIM) & Defender (XDR) KQL** with
+pySigma. Every rule is **fire-tested in CI** against synthetic JSON logs — so coverage claims are
+*proven*, not asserted — and tagged to **MITRE ATT&CK** and **MITRE ATLAS**. Alongside a classic
+host-detection pack it ships an **AI/LLM-application threat pack** (OWASP Top 10 for LLM + ATLAS),
+**Sigma correlation rules** (multi-event aggregation), and an optional **local-first LLM rule
+drafter** gated by a deterministic validator.
 
 ---
 
 ## Highlights
 
-- 🛡️ **Multi-backend** — one Sigma source compiles to Splunk SPL *and* Sentinel/Defender KQL, no copy-paste drift.
-- ✅ **Fire-tested** — each rule must match positive sample logs and ignore negatives, enforced in CI.
-- 🤖 **AI/LLM threat pack** — prompt injection, secret leakage, and token-cost abuse mapped to OWASP LLM + ATLAS.
+- 🛡️ **Multi-backend** — one Sigma source compiles to Splunk **SPL** and Microsoft **Defender/XDR** + **Sentinel/ASIM** KQL, no copy-paste drift.
+- ✅ **Fire-tested** — each rule must match positive sample logs and ignore negatives, enforced in CI (Python 3.11 **and** 3.12).
+- 🤖 **AI/LLM threat pack** — prompt injection, sensitive-info disclosure, output handling, excessive agency, system-prompt leakage, and unbounded consumption, mapped to OWASP LLM + ATLAS.
+- 🔗 **Correlation rules** — `event_count` / `value_count` aggregation over a `timespan` (e.g. injection bursts and tool fan-out per `user.id`), fire-tested over multi-event scenarios.
 - 🔒 **Local-first drafter** — draft new rules from a sentence via a *local* LLM; never accepts a rule that fails lint → convert → fire-test.
-- 🗺️ **ATT&CK heatmap** — a Navigator layer + a rendered coverage PNG, generated from rule tags.
+- 🗺️ **ATT&CK heatmap + Pages** — a Navigator layer + rendered coverage PNG, generated from rule tags and publishable to GitHub Pages.
 
 ---
 
@@ -92,27 +94,49 @@ make test
 ## Repo layout
 
 ```text
-rules/            classic/ (ATT&CK)  +  llm/ (OWASP LLM + ATLAS)   — DRL-1.1
+rules/            classic/ (ATT&CK) · llm/ (OWASP LLM + ATLAS) · correlation/   — DRL-1.1
 pipelines/        custom SPL + KQL processing pipelines for the llm_app logsource
 sample_logs/      *.positive.json / *.negative.json fire-test fixtures
 src/sigmaforge/   cli · convert · evaluate · coverage · lint · llm_schema · draft
-tests/            test_lint · test_convert (golden snapshots) · test_evaluate · test_draft
+tests/            test_lint · test_convert (goldens) · test_evaluate · test_correlation · test_draft
 docs/             threat-model.md · sigma-subset.md · images/ (banner, heatmap)
-.github/          CI: lint → convert → fire-test → upload ATT&CK layer
+.github/          ci.yml (3.11/3.12 matrix) · pages.yml (coverage site)
 ```
 
 ---
 
 ## Detection packs
 
-| Rule | ATT&CK / ATLAS | Logsource | Backends |
-|------|----------------|-----------|----------|
-| `win_encoded_powershell` | T1059.001, T1027 | `process_creation` | SPL · KQL |
-| `win_certutil_download` | T1105, T1140 | `process_creation` | SPL · KQL |
-| `win_wmic_process_create` | T1047 | `process_creation` | SPL · KQL |
-| `llm_prompt_injection_phrases` | LLM01 · `AML.T0051` / `AML.T0054` | `llm_app` | SPL · KQL |
-| `llm_secret_in_prompt` | LLM02 · `AML.T0057` | `llm_app` | SPL · KQL |
-| `llm_token_cost_spike` | LLM10 · `AML.T0034` / `AML.T0029` | `llm_app` | SPL · KQL |
+Backends: **SPL** (Splunk), **XDR** (Defender KQL), **ASIM** (Sentinel KQL).
+
+**Classic — MITRE ATT&CK** (`process_creation`)
+
+| Rule | ATT&CK | Backends |
+|------|--------|----------|
+| `win_encoded_powershell` | T1059.001, T1027 | SPL · XDR · ASIM |
+| `win_certutil_download` | T1105, T1140 | SPL · XDR · ASIM |
+| `win_wmic_process_create` | T1047 | SPL · XDR · ASIM |
+| `win_vssadmin_shadow_delete` | T1490 | SPL · XDR · ASIM |
+| `win_lsass_comsvcs_dump` | T1003.001 | SPL · XDR · ASIM |
+| `win_schtasks_persistence` | T1053.005 | SPL · XDR · ASIM |
+
+**AI/LLM — OWASP LLM Top 10 + MITRE ATLAS** (`llm_app`)
+
+| Rule | OWASP · ATLAS | Backends |
+|------|---------------|----------|
+| `llm_prompt_injection_phrases` | LLM01 · `AML.T0051` / `AML.T0054` | SPL · XDR |
+| `llm_secret_in_prompt` | LLM02 · `AML.T0057` | SPL · XDR |
+| `llm_insecure_output_handling` | LLM05 · `AML.T0048` | SPL · XDR |
+| `llm_excessive_agency_tool_abuse` | LLM06 · `AML.T0053` | SPL · XDR |
+| `llm_system_prompt_leak` | LLM07 · `AML.T0069.002` / `AML.T0057` | SPL · XDR |
+| `llm_token_cost_spike` | LLM10 · `AML.T0034` / `AML.T0029` | SPL · XDR |
+
+**Correlation — multi-event aggregation** (`event_count` / `value_count`, SPL)
+
+| Rule | OWASP · ATLAS | Signal |
+|------|---------------|--------|
+| `llm_prompt_injection_burst` | LLM01 · `AML.T0051` | ≥3 injection attempts per `user.id` in 10m |
+| `llm_tool_target_fanout` | LLM06 · `AML.T0053` | ≥5 distinct tool target hosts per `user.id` in 5m |
 
 <details>
 <summary><b>Full rule metadata</b></summary>
@@ -120,8 +144,10 @@ docs/             threat-model.md · sigma-subset.md · images/ (banner, heatmap
 Every rule carries a unique UUID `id`, `status`, `level`, `description`, `author`, a valid
 `logsource`, and ATT&CK/ATLAS/OWASP tags. The classic pack uses standard SigmaHQ
 `process_creation` field names (`Image`, `CommandLine`, `ParentImage`) so it converts cleanly
-through the Sysmon (SPL) and Microsoft XDR (KQL) pipelines. The AI/LLM pack uses the synthetic
-`llm_app` logsource defined in [`docs/sigma-subset.md`](docs/sigma-subset.md).
+through the Sysmon (SPL), Microsoft XDR, and Sentinel ASIM pipelines. The AI/LLM pack uses the
+synthetic `llm_app` logsource defined in [`docs/sigma-subset.md`](docs/sigma-subset.md); KQL targets
+a custom `LLMAppLogs_CL` table (no native ASIM table exists for it). Correlation rules convert to
+Splunk SPL — the Kusto backend does not implement Sigma correlations.
 
 </details>
 
@@ -179,10 +205,11 @@ uv run sigma-forge draft "detect base64-encoded PowerShell downloads" --out rule
 
 ## How CI works
 
-On every push and PR (Python 3.11): `uv sync` → **ruff** + **mypy** → convert *all* rules to SPL
-and KQL (fail on any conversion error) → **pytest** (lint, golden conversions, fire-tests) →
-upload the ATT&CK Navigator layer JSON as an artifact. A separate **gitleaks** job scans for
-secrets.
+On every push and PR, across a **Python 3.11 + 3.12** matrix: `uv sync` → **ruff** + **mypy** →
+convert *all* rules to SPL + Defender/Sentinel KQL (fail on any conversion error) → **pytest**
+(lint, golden conversions, fire-tests) → upload the ATT&CK Navigator layer JSON as an artifact. A
+separate **gitleaks** job scans for secrets, and a **Pages** workflow publishes the coverage site
+(`sigma-forge coverage --site`) on pushes to `main`.
 
 ---
 
@@ -193,6 +220,11 @@ secrets.
   native tables. sigma-forge targets a *custom* `LLMAppLogs_CL` Log Analytics table via the
   backend's `query_table` pipeline state; the column names are an illustrative convention for the
   synthetic schema, **not** a Microsoft-defined table. Validate against your real table before use.
+- **Correlations are Splunk-only.** Sigma `event_count` / `value_count` correlation rules convert to
+  Splunk SPL; the AttackIQ Kusto backend raises `NotImplementedError` for correlations, so that
+  target is skipped for correlation rules (documented, not silently dropped). The offline evaluator
+  implements correlations with **sliding** `timespan` windows, while the emitted SPL uses Splunk's
+  **fixed `bin` buckets** — see [`docs/sigma-subset.md`](docs/sigma-subset.md) for the caveat.
 - **Evaluator subset.** The offline fire-test evaluator supports a documented subset
   (equals/contains/startswith/endswith/`re`/`null`/`all` + numeric compares + keywords). Constructs
   like `base64offset`, `cidr`, and `fieldref` convert to SPL/KQL fine but raise a clear error in the

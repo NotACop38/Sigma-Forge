@@ -5,7 +5,7 @@ Output docs/images/demo.gif
 Set Shell "bash"
 Set FontSize 18
 Set Width 1200
-Set Height 760
+Set Height 880
 Set Theme "GitHub Dark"
 Set Padding 20
 Set TypingSpeed 30ms

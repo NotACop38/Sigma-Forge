@@ -1,0 +1,1 @@
+llm_completion IN ("*<script*", "*javascript:*", "*onerror=*", "*onload=*", "*<iframe*", "*DROP TABLE*", "*UNION SELECT*")
