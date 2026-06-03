@@ -9,19 +9,22 @@ Targets (each knows which rule *kinds* it supports):
 Target id       Query language                Backend               Applies to
 ==============  ============================  ====================  ==========================
 ``splunk``      Splunk SPL                    SplunkBackend         classic, llm, correlation
-``splunk_spl2`` Splunk SPL2                   SplunkSPL2Backend     classic, llm
 ``kusto``       Microsoft Defender/XDR KQL    KustoBackend          classic, llm
 ``sentinel``    Microsoft Sentinel ASIM KQL   KustoBackend          classic
 ==============  ============================  ====================  ==========================
 
 Pipelines are chosen per (target, kind):
 
-* classic ``process_creation`` -> Sysmon (SPL/SPL2), Microsoft XDR (kusto),
+* classic ``process_creation`` -> Sysmon (SPL), Microsoft XDR (kusto),
   Sentinel ASIM (sentinel).
 * custom ``llm_app`` -> the repo-local pipelines under ``pipelines/`` (KQL targets
   the custom ``LLMAppLogs_CL`` table).
-* correlation rules -> Splunk only; the Kusto backend and the SPL2 backend raise
+* correlation rules -> Splunk only; the Kusto backend raises
   ``NotImplementedError`` for correlations, which we surface as a documented skip.
+
+Note: the Splunk **SPL2** backend was evaluated and intentionally NOT shipped — it
+emits mixed ``AND``/``OR`` ``WHERE`` clauses without grouping parentheses, which
+changes operator precedence and makes the query broader than the Sigma rule.
 """
 
 from __future__ import annotations
@@ -59,7 +62,6 @@ class Target:
 
 TARGETS: dict[str, Target] = {
     "splunk": Target("splunk", "Splunk SPL", "text", frozenset({CLASSIC, LLM, CORRELATION})),
-    "splunk_spl2": Target("splunk_spl2", "Splunk SPL2", "text", frozenset({CLASSIC, LLM})),
     "kusto": Target("kusto", "Microsoft Defender/XDR KQL", "kql", frozenset({CLASSIC, LLM})),
     "sentinel": Target("sentinel", "Microsoft Sentinel KQL (ASIM)", "kql", frozenset({CLASSIC})),
 }
@@ -109,7 +111,7 @@ def rule_kind(path: Path) -> str:
 
 @cache
 def _llm_pipeline(target_id: str) -> ProcessingPipeline:
-    fname = "llm_splunk.yml" if target_id in {"splunk", "splunk_spl2"} else "llm_kusto.yml"
+    fname = "llm_splunk.yml" if target_id == "splunk" else "llm_kusto.yml"
     pipeline = ProcessingPipeline.from_yaml((PIPELINES_ROOT / fname).read_text(encoding="utf-8"))
     if target_id in {"kusto", "sentinel"}:
         from sigma.pipelines.kusto_common.postprocessing import (
@@ -150,7 +152,7 @@ def _pipeline_kind(kind: str, rule_yaml: str) -> str:
 def _pipeline(target_id: str, pkind: str) -> ProcessingPipeline:
     if pkind == LLM:
         return _llm_pipeline(target_id)
-    if target_id in {"splunk", "splunk_spl2"}:
+    if target_id == "splunk":
         from sigma.pipelines.sysmon import sysmon_pipeline
 
         return sysmon_pipeline()
@@ -170,10 +172,6 @@ def _backend(target_id: str, pkind: str):
         from sigma.backends.splunk import SplunkBackend
 
         return SplunkBackend(processing_pipeline=pipeline)
-    if target_id == "splunk_spl2":
-        from sigma.backends.splunk import SplunkSPL2Backend
-
-        return SplunkSPL2Backend(processing_pipeline=pipeline)
     from sigma.backends.kusto import KustoBackend
 
     return KustoBackend(processing_pipeline=pipeline)  # type: ignore[arg-type]

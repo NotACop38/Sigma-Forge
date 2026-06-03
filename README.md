@@ -25,7 +25,7 @@
 ## What it is
 
 **sigma-forge** is a detection-as-code starter that authors vendor-neutral **Sigma** rules and
-converts them to **Splunk SPL & SPL2** and **Microsoft Sentinel (ASIM) & Defender (XDR) KQL** with
+converts them to **Splunk SPL** and **Microsoft Sentinel (ASIM) & Defender (XDR) KQL** with
 pySigma. Every rule is **fire-tested in CI** against synthetic JSON logs — so coverage claims are
 *proven*, not asserted — and tagged to **MITRE ATT&CK** and **MITRE ATLAS**. Alongside a classic
 host-detection pack it ships an **AI/LLM-application threat pack** (OWASP Top 10 for LLM + ATLAS),
@@ -36,7 +36,7 @@ drafter** gated by a deterministic validator.
 
 ## Highlights
 
-- 🛡️ **Multi-backend** — one Sigma source compiles to Splunk **SPL** + **SPL2** and Microsoft **Defender/XDR** + **Sentinel/ASIM** KQL, no copy-paste drift.
+- 🛡️ **Multi-backend** — one Sigma source compiles to Splunk **SPL** and Microsoft **Defender/XDR** + **Sentinel/ASIM** KQL, no copy-paste drift.
 - ✅ **Fire-tested** — each rule must match positive sample logs and ignore negatives, enforced in CI (Python 3.11 **and** 3.12).
 - 🤖 **AI/LLM threat pack** — prompt injection, sensitive-info disclosure, output handling, excessive agency, system-prompt leakage, and unbounded consumption, mapped to OWASP LLM + ATLAS.
 - 🔗 **Correlation rules** — `event_count` / `value_count` aggregation over a `timespan` (e.g. injection bursts and tool fan-out per `user.id`), fire-tested over multi-event scenarios.
@@ -107,29 +107,29 @@ docs/             threat-model.md · sigma-subset.md · images/ (banner, heatmap
 
 ## Detection packs
 
-Backends: **SPL** (Splunk), **SPL2** (Splunk), **XDR** (Defender KQL), **ASIM** (Sentinel KQL).
+Backends: **SPL** (Splunk), **XDR** (Defender KQL), **ASIM** (Sentinel KQL).
 
 **Classic — MITRE ATT&CK** (`process_creation`)
 
 | Rule | ATT&CK | Backends |
 |------|--------|----------|
-| `win_encoded_powershell` | T1059.001, T1027 | SPL · SPL2 · XDR · ASIM |
-| `win_certutil_download` | T1105, T1140 | SPL · SPL2 · XDR · ASIM |
-| `win_wmic_process_create` | T1047 | SPL · SPL2 · XDR · ASIM |
-| `win_vssadmin_shadow_delete` | T1490 | SPL · SPL2 · XDR · ASIM |
-| `win_lsass_comsvcs_dump` | T1003.001 | SPL · SPL2 · XDR · ASIM |
-| `win_schtasks_persistence` | T1053.005 | SPL · SPL2 · XDR · ASIM |
+| `win_encoded_powershell` | T1059.001, T1027 | SPL · XDR · ASIM |
+| `win_certutil_download` | T1105, T1140 | SPL · XDR · ASIM |
+| `win_wmic_process_create` | T1047 | SPL · XDR · ASIM |
+| `win_vssadmin_shadow_delete` | T1490 | SPL · XDR · ASIM |
+| `win_lsass_comsvcs_dump` | T1003.001 | SPL · XDR · ASIM |
+| `win_schtasks_persistence` | T1053.005 | SPL · XDR · ASIM |
 
 **AI/LLM — OWASP LLM Top 10 + MITRE ATLAS** (`llm_app`)
 
 | Rule | OWASP · ATLAS | Backends |
 |------|---------------|----------|
-| `llm_prompt_injection_phrases` | LLM01 · `AML.T0051` / `AML.T0054` | SPL · SPL2 · XDR |
-| `llm_secret_in_prompt` | LLM02 · `AML.T0057` | SPL · SPL2 · XDR |
-| `llm_insecure_output_handling` | LLM05 · `AML.T0048` | SPL · SPL2 · XDR |
-| `llm_excessive_agency_tool_abuse` | LLM06 · `AML.T0053` | SPL · SPL2 · XDR |
-| `llm_system_prompt_leak` | LLM07 · `AML.T0069.002` / `AML.T0057` | SPL · SPL2 · XDR |
-| `llm_token_cost_spike` | LLM10 · `AML.T0034` / `AML.T0029` | SPL · SPL2 · XDR |
+| `llm_prompt_injection_phrases` | LLM01 · `AML.T0051` / `AML.T0054` | SPL · XDR |
+| `llm_secret_in_prompt` | LLM02 · `AML.T0057` | SPL · XDR |
+| `llm_insecure_output_handling` | LLM05 · `AML.T0048` | SPL · XDR |
+| `llm_excessive_agency_tool_abuse` | LLM06 · `AML.T0053` | SPL · XDR |
+| `llm_system_prompt_leak` | LLM07 · `AML.T0069.002` / `AML.T0057` | SPL · XDR |
+| `llm_token_cost_spike` | LLM10 · `AML.T0034` / `AML.T0029` | SPL · XDR |
 
 **Correlation — multi-event aggregation** (`event_count` / `value_count`, SPL)
 
@@ -144,21 +144,10 @@ Backends: **SPL** (Splunk), **SPL2** (Splunk), **XDR** (Defender KQL), **ASIM** 
 Every rule carries a unique UUID `id`, `status`, `level`, `description`, `author`, a valid
 `logsource`, and ATT&CK/ATLAS/OWASP tags. The classic pack uses standard SigmaHQ
 `process_creation` field names (`Image`, `CommandLine`, `ParentImage`) so it converts cleanly
-through the Sysmon (SPL/SPL2), Microsoft XDR, and Sentinel ASIM pipelines. The AI/LLM pack uses the
+through the Sysmon (SPL), Microsoft XDR, and Sentinel ASIM pipelines. The AI/LLM pack uses the
 synthetic `llm_app` logsource defined in [`docs/sigma-subset.md`](docs/sigma-subset.md); KQL targets
 a custom `LLMAppLogs_CL` table (no native ASIM table exists for it). Correlation rules convert to
-Splunk SPL — the Kusto and SPL2 backends do not implement Sigma correlations.
-
-</details>
-
-<details>
-<summary><b>Repo layout (updated)</b></summary>
-
-```text
-rules/            classic/ (ATT&CK)  ·  llm/ (OWASP LLM + ATLAS)  ·  correlation/ (multi-event)
-```
-
-</details>
+Splunk SPL — the Kusto backend does not implement Sigma correlations.
 
 </details>
 
@@ -217,7 +206,7 @@ uv run sigma-forge draft "detect base64-encoded PowerShell downloads" --out rule
 ## How CI works
 
 On every push and PR, across a **Python 3.11 + 3.12** matrix: `uv sync` → **ruff** + **mypy** →
-convert *all* rules to SPL/SPL2 + Defender/Sentinel KQL (fail on any conversion error) → **pytest**
+convert *all* rules to SPL + Defender/Sentinel KQL (fail on any conversion error) → **pytest**
 (lint, golden conversions, fire-tests) → upload the ATT&CK Navigator layer JSON as an artifact. A
 separate **gitleaks** job scans for secrets, and a **Pages** workflow publishes the coverage site
 (`sigma-forge coverage --site`) on pushes to `main`.
@@ -232,9 +221,10 @@ separate **gitleaks** job scans for secrets, and a **Pages** workflow publishes 
   backend's `query_table` pipeline state; the column names are an illustrative convention for the
   synthetic schema, **not** a Microsoft-defined table. Validate against your real table before use.
 - **Correlations are Splunk-only.** Sigma `event_count` / `value_count` correlation rules convert to
-  Splunk SPL; the AttackIQ Kusto backend and the Splunk SPL2 backend raise `NotImplementedError` for
-  correlations, so those targets are skipped for correlation rules (documented, not silently
-  dropped). The offline evaluator implements correlations directly with `timespan` windows.
+  Splunk SPL; the AttackIQ Kusto backend raises `NotImplementedError` for correlations, so that
+  target is skipped for correlation rules (documented, not silently dropped). The offline evaluator
+  implements correlations with **sliding** `timespan` windows, while the emitted SPL uses Splunk's
+  **fixed `bin` buckets** — see [`docs/sigma-subset.md`](docs/sigma-subset.md) for the caveat.
 - **Evaluator subset.** The offline fire-test evaluator supports a documented subset
   (equals/contains/startswith/endswith/`re`/`null`/`all` + numeric compares + keywords). Constructs
   like `base64offset`, `cidr`, and `fieldref` convert to SPL/KQL fine but raise a clear error in the

@@ -44,7 +44,7 @@ jobs:
       - name: Mypy (type check)
         run: uv run --python ${{ matrix.python-version }} mypy
 
-      - name: Convert every rule to SPL/SPL2 and Sentinel/Defender KQL (fail on error)
+      - name: Convert every rule to SPL and Sentinel/Defender KQL (fail on error)
         run: uv run --python ${{ matrix.python-version }} sigma-forge convert --all --check
 
       - name: Pytest (lint + convert goldens + fire-tests)

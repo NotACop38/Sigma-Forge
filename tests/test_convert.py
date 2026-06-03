@@ -23,6 +23,16 @@ def test_rules_exist():
     assert RULE_FILES, "no rule files discovered under rules/"
 
 
+def test_cli_rejects_unknown_target():
+    from typer.testing import CliRunner
+
+    from sigmaforge.cli import app
+
+    result = CliRunner().invoke(app, ["convert", "--all", "--target", "splnuk"])
+    assert result.exit_code == 2, result.output
+    assert "Unknown target" in result.output
+
+
 @pytest.mark.parametrize(("rule_path", "target"), CASES, ids=CASE_IDS)
 def test_converts_for_target(rule_path: Path, target: str):
     conv = convert_mod.convert_file(rule_path)

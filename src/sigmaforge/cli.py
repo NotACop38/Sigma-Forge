@@ -54,6 +54,11 @@ def convert(
     ),
 ) -> None:
     """Convert Sigma rules to Splunk SPL and Microsoft Sentinel/Defender KQL."""
+    if target is not None and target not in convert_mod.TARGETS:
+        valid = ", ".join(convert_mod.TARGETS)
+        console.print(f"[red]Unknown target '{target}'.[/red] Valid targets: {valid}.")
+        raise typer.Exit(code=2)
+
     rule_paths = None if (all_rules or not paths) else list(paths)
     files = convert_mod.iter_rule_files(rule_paths)
     if not files:

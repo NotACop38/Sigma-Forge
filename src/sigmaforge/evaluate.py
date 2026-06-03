@@ -235,7 +235,15 @@ def correlation_triggers(collection: SigmaCollection, events: list[dict[str, Any
     if corr.type not in (SigmaCorrelationType.EVENT_COUNT, SigmaCorrelationType.VALUE_COUNT):
         raise UnsupportedFeatureError(f"unsupported correlation type: {corr.type.name}")
 
-    bases = [r for r in collection.rules if isinstance(r, SigmaRule)]
+    # Only the base rules this correlation actually references (not every rule in
+    # the collection), so an unrelated rule in the same file can't trigger it.
+    bases: list[SigmaRule] = []
+    for ref in corr.rules or []:
+        ref_rule = getattr(ref, "rule", None)
+        if isinstance(ref_rule, SigmaRule):
+            bases.append(ref_rule)
+    if not bases:
+        bases = [r for r in collection.rules if isinstance(r, SigmaRule)]
     matched = [e for e in events if any(matches(b, e) for b in bases)]
 
     condition = corr.condition

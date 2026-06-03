@@ -1,1 +1,0 @@
-FROM main WHERE EventID=1 AND Image LIKE "%\certutil.exe" AND CommandLine LIKE "%urlcache%" OR CommandLine LIKE "%verifyctl%" OR CommandLine LIKE "%-decode%" OR CommandLine LIKE "%/decode%"

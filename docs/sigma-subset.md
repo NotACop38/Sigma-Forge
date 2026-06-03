@@ -48,8 +48,16 @@ Sigma correlation rules are supported for **`event_count`** and **`value_count`*
 - **Fire-test fixtures for correlations are scenarios**: the `*.positive.json`
   event set must trigger the correlation, the `*.negative.json` set must not.
 - **Backend support:** correlations convert to **Splunk SPL** only. The Kusto
-  backend and the Splunk **SPL2** backend raise `NotImplementedError` for
-  correlations, so those targets are skipped (documented, not silent).
+  backend raises `NotImplementedError` for correlations, so that target is skipped
+  (documented, not silent).
+- **Windowing caveat (sliding vs. tumbling):** the offline evaluator uses a
+  **sliding** `timespan` window (any window of `timespan` length triggers), so it
+  is *at least as sensitive* as the deployed query. pySigma's Splunk backend emits
+  `bin _time span=<timespan>` — i.e. **fixed/tumbling** buckets — so events that
+  straddle a bucket boundary (e.g. 14:09/14:10/14:11 for a 10m rule) can be split
+  across two buckets in Splunk and miss, even though the evaluator (and intent)
+  would alert. Tune the deployed `bin`/window strategy to your SIEM; the fixtures
+  here keep bursts within a single bucket so both agree.
 - `temporal*` and `value_sum/avg/percentile/median` correlation types are **not**
   implemented by the offline evaluator and raise a clear error.
 

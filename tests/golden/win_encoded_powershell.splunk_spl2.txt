@@ -1,1 +1,0 @@
-FROM main WHERE EventID=1 AND Image LIKE "%\powershell.exe" OR Image LIKE "%\pwsh.exe" AND CommandLine LIKE "% -enc %" OR CommandLine LIKE "% -EncodedCommand %" OR CommandLine LIKE "% -ec %" OR CommandLine LIKE "%FromBase64String%"

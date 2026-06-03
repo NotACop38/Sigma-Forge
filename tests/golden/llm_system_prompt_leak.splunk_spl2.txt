@@ -1,1 +1,0 @@
-FROM main WHERE llm_completion LIKE "%You are a helpful assistant%" OR llm_completion LIKE "%system prompt:%" OR llm_completion LIKE "%my instructions are%" OR llm_completion LIKE "%my system prompt%" OR llm_completion LIKE "%I was instructed to%" OR llm_completion LIKE "%BEGIN SYSTEM PROMPT%"
