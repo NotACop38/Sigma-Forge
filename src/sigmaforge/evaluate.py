@@ -75,8 +75,10 @@ def _sigmastring_to_regex(value: SigmaString) -> re.Pattern[str]:
             out.append(".*")
         elif part is SpecialChars.WILDCARD_SINGLE:
             out.append(".")
-        else:
+        elif isinstance(part, str):
             out.append(re.escape(part))
+        else:  # pragma: no cover - placeholders (%var%) are outside the supported subset
+            raise UnsupportedFeatureError("placeholder expansion is not supported")
     out.append("$")
     return re.compile("".join(out), re.IGNORECASE | re.DOTALL)
 
@@ -98,7 +100,7 @@ def _match_value(event_value: Any, sigma_value: Any) -> bool:
     if isinstance(sigma_value, SigmaRegularExpression):
         if event_value is None:
             return False
-        return re.search(sigma_value.regexp, str(event_value)) is not None
+        return re.search(str(sigma_value.regexp), str(event_value)) is not None
 
     if isinstance(sigma_value, SigmaNumber):
         try:
@@ -154,7 +156,10 @@ def matches(rule: SigmaRule, event: dict[str, Any]) -> bool:
 
 def load_rule(path: Path) -> SigmaRule:
     collection = SigmaCollection.from_yaml(Path(path).read_text(encoding="utf-8"))
-    return collection.rules[0]
+    rule = collection.rules[0]
+    if not isinstance(rule, SigmaRule):
+        raise UnsupportedFeatureError(f"{path} is not a plain Sigma rule (correlation rules unsupported)")
+    return rule
 
 
 # --- fire-test orchestration ----------------------------------------------

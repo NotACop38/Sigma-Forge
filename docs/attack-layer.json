@@ -1,0 +1,93 @@
+{
+  "name": "sigma-forge \u2014 detection coverage",
+  "versions": {
+    "attack": "14",
+    "navigator": "4.9.5",
+    "layer": "4.5"
+  },
+  "domain": "enterprise-attack",
+  "description": "Coverage generated from sigma-forge rule tags.",
+  "techniques": [
+    {
+      "techniqueID": "T1027",
+      "score": 1,
+      "comment": "Encoded PowerShell Command Execution",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "1"
+        }
+      ]
+    },
+    {
+      "techniqueID": "T1047",
+      "score": 1,
+      "comment": "WMIC Process Creation",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "1"
+        }
+      ]
+    },
+    {
+      "techniqueID": "T1059.001",
+      "score": 1,
+      "comment": "Encoded PowerShell Command Execution",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "1"
+        }
+      ]
+    },
+    {
+      "techniqueID": "T1105",
+      "score": 1,
+      "comment": "Certutil Download or Decode Activity",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "1"
+        }
+      ]
+    },
+    {
+      "techniqueID": "T1140",
+      "score": 1,
+      "comment": "Certutil Download or Decode Activity",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "1"
+        }
+      ]
+    }
+  ],
+  "gradient": {
+    "colors": [
+      "#2b3a55ff",
+      "#4cc9f0ff",
+      "#80ffdbff"
+    ],
+    "minValue": 0,
+    "maxValue": 1
+  },
+  "legendItems": [
+    {
+      "label": "covered by sigma-forge rules",
+      "color": "#4cc9f0"
+    }
+  ],
+  "layout": {
+    "layout": "side",
+    "showName": true,
+    "showID": true
+  },
+  "hideDisabled": true
+}
