@@ -30,7 +30,7 @@ from .evaluate import load_rule  # noqa: E402
 _TECHNIQUE_RE = re.compile(r"^t\d{4}(\.\d{3})?$", re.IGNORECASE)
 _ATLAS_RE = re.compile(r"^t\d{4}(\.\d{3})?$", re.IGNORECASE)
 
-# ATT&CK tactic shortname -> (display name, matrix order).
+# ATT&CK tactic Sigma-tag shortname (hyphenated) -> (display name, matrix order).
 _TACTICS = {
     "reconnaissance": ("Reconnaissance", 0),
     "resource-development": ("Resource Development", 1),
