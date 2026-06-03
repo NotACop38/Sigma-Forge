@@ -25,6 +25,7 @@ from pathlib import Path
 from uuid import UUID
 
 from sigma.collection import SigmaCollection
+from sigma.correlations import SigmaCorrelationRule
 from sigma.exceptions import SigmaError
 from sigma.rule import SigmaRule
 from sigma.validation import SigmaValidator
@@ -56,11 +57,11 @@ _ATTACK_TACTICS = {
 _TECHNIQUE_RE = re.compile(r"^t\d{4}(\.\d{3})?$", re.IGNORECASE)
 
 
-def _check_attack_tags(rule: SigmaRule) -> list[str]:
+def _check_attack_tags(rule: SigmaRule | SigmaCorrelationRule) -> list[str]:
     """Validate ``attack.*`` tags: techniques by ID format, tactics by name."""
     out: list[str] = []
     title = rule.title or "<untitled>"
-    for tag in rule.tags:
+    for tag in rule.tags or []:
         if tag.namespace != "attack":
             continue
         if _TECHNIQUE_RE.match(tag.name):
@@ -93,11 +94,9 @@ def lint_text(rule_yaml: str) -> list[str]:
         return ["no rules parsed from document"]
 
     for rule in collection.rules:
-        if not isinstance(rule, SigmaRule):
-            issues.append("correlation rules are not supported by this pack")
-            continue
-        title = rule.title or "<untitled>"
-        if rule.id is None:
+        title = getattr(rule, "title", None) or "<untitled>"
+        # id (UUID) and title/status/level apply to both rule and correlation rules.
+        if getattr(rule, "id", None) is None:
             issues.append(f"{title}: missing required 'id' (UUID)")
         else:
             try:
@@ -107,6 +106,15 @@ def lint_text(rule_yaml: str) -> list[str]:
         for attr in _REQUIRED:
             if getattr(rule, attr, None) in (None, ""):
                 issues.append(f"{title}: missing required '{attr}'")
+        issues.extend(_check_attack_tags(rule))
+
+        if isinstance(rule, SigmaCorrelationRule):
+            if not rule.rules:
+                issues.append(f"{title}: correlation references no base rules")
+            continue
+
+        if not isinstance(rule, SigmaRule):
+            continue
         if not rule.logsource or (
             not rule.logsource.category
             and not rule.logsource.product
@@ -115,7 +123,6 @@ def lint_text(rule_yaml: str) -> list[str]:
             issues.append(f"{title}: empty or missing 'logsource'")
         if not rule.detection or not rule.detection.detections:
             issues.append(f"{title}: empty or missing 'detection'")
-        issues.extend(_check_attack_tags(rule))
 
     validator = _curated_validator()
     for finding in validator.validate_rules(

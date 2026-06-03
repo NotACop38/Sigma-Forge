@@ -1,0 +1,6 @@
+[
+  {"timestamp":"2026-06-03T15:00:00Z","user.id":"user-9101","tool.name":"http_request","tool.target_host":"api.example.com"},
+  {"timestamp":"2026-06-03T15:00:30Z","user.id":"user-9101","tool.name":"http_request","tool.target_host":"api.example.com"},
+  {"timestamp":"2026-06-03T15:01:00Z","user.id":"user-9101","tool.name":"doc_search","tool.target_host":"wiki.internal"},
+  {"timestamp":"2026-06-03T15:02:00Z","user.id":"user-9102","tool.name":"http_request","tool.target_host":"a.example.com"}
+]

@@ -1,0 +1,53 @@
+title: Prompt-injection attempts by user (base)
+id: 4f6d37bd-a22d-4392-8d0d-a34f5eb06f4d
+name: llm_prompt_injection_attempt
+status: experimental
+description: >
+  Base detection for the prompt-injection burst correlation: a single LLM
+  prompt containing a known override/jailbreak phrase. Authored from public
+  OWASP/ATLAS references against the synthetic llm_app schema.
+author: sigma-forge
+date: 2026-06-03
+logsource:
+  product: llm_app
+  category: gateway
+detection:
+  selection:
+    llm.prompt|contains:
+      - 'ignore previous instructions'
+      - 'ignore all previous'
+      - 'developer mode'
+      - 'do anything now'
+      - 'bypass your guidelines'
+  condition: selection
+level: informational
+tags:
+  - attack.initial-access
+  - owasp.llm01
+  - atlas.t0051
+---
+title: Repeated Prompt-Injection Attempts by a Single User
+id: b0446a52-4401-4000-bb8b-6e42074cdddd
+status: experimental
+description: >
+  Correlates repeated prompt-injection attempts from one user.id within a short
+  window — a stronger, lower-false-positive signal than any single attempt. Maps
+  to OWASP LLM01 and MITRE ATLAS LLM Prompt Injection.
+author: sigma-forge
+date: 2026-06-03
+correlation:
+  type: event_count
+  rules:
+    - llm_prompt_injection_attempt
+  group-by:
+    - user.id
+  timespan: 10m
+  condition:
+    gte: 3
+falsepositives:
+  - Red-team or guardrail-testing sessions.
+level: high
+tags:
+  - attack.initial-access
+  - owasp.llm01
+  - atlas.t0051

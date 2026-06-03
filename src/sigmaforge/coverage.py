@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.colors import LinearSegmentedColormap  # noqa: E402
 
 from .convert import iter_rule_files  # noqa: E402
-from .evaluate import load_rule  # noqa: E402
+from .evaluate import load_collection  # noqa: E402
 
 _TECHNIQUE_RE = re.compile(r"^t\d{4}(\.\d{3})?$", re.IGNORECASE)
 _ATLAS_RE = re.compile(r"^t\d{4}(\.\d{3})?$", re.IGNORECASE)
@@ -71,21 +71,21 @@ class CoverageData:
 def collect_coverage(paths: list[Path] | None = None) -> CoverageData:
     data = CoverageData()
     for rule_path in iter_rule_files(paths):
-        rule = load_rule(rule_path)
-        title = rule.title or rule_path.stem
-        tactics: set[str] = set()
-        techniques: set[str] = set()
-        for tag in rule.tags:
-            ns, name = tag.namespace, tag.name
-            if ns == "attack" and _TECHNIQUE_RE.match(name):
-                techniques.add(name.upper())
-            elif ns == "attack" and name in _TACTICS:
-                tactics.add(name)
-            elif ns == "atlas" and _ATLAS_RE.match(name):
-                data.atlas_rules[f"AML.{name.upper()}"].append(title)
-        for tech in techniques:
-            data.technique_rules[tech].append(title)
-            data.technique_tactics[tech].update(tactics)
+        for rule in load_collection(rule_path).rules:
+            title = getattr(rule, "title", None) or rule_path.stem
+            tactics: set[str] = set()
+            techniques: set[str] = set()
+            for tag in getattr(rule, "tags", []) or []:
+                ns, name = tag.namespace, tag.name
+                if ns == "attack" and _TECHNIQUE_RE.match(name):
+                    techniques.add(name.upper())
+                elif ns == "attack" and name in _TACTICS:
+                    tactics.add(name)
+                elif ns == "atlas" and _ATLAS_RE.match(name):
+                    data.atlas_rules[f"AML.{name.upper()}"].append(title)
+            for tech in techniques:
+                data.technique_rules[tech].append(title)
+                data.technique_tactics[tech].update(tactics)
     return data
 
 

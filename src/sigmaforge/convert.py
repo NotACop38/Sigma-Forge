@@ -127,11 +127,29 @@ def _llm_pipeline(target_id: str) -> ProcessingPipeline:
     return pipeline
 
 
-@cache
-def _pipeline(target_id: str, kind: str) -> ProcessingPipeline:
+def _pipeline_kind(kind: str, rule_yaml: str) -> str:
+    """Map a rule kind to which field-mapping pipeline family to use (classic|llm).
+
+    Correlation rules inherit the family of their base rule's logsource.
+    """
     if kind == LLM:
+        return LLM
+    if kind == CORRELATION:
+        for d in yaml.safe_load_all(rule_yaml):
+            if not isinstance(d, dict):
+                continue
+            ls = d.get("logsource", {}) or {}
+            if "llm" in (ls.get("category") or "").lower() or "llm" in (
+                ls.get("product") or ""
+            ).lower():
+                return LLM
+    return CLASSIC
+
+
+@cache
+def _pipeline(target_id: str, pkind: str) -> ProcessingPipeline:
+    if pkind == LLM:
         return _llm_pipeline(target_id)
-    # classic + correlation use host pipelines
     if target_id in {"splunk", "splunk_spl2"}:
         from sigma.pipelines.sysmon import sysmon_pipeline
 
@@ -146,8 +164,8 @@ def _pipeline(target_id: str, kind: str) -> ProcessingPipeline:
 
 
 @cache
-def _backend(target_id: str, kind: str):
-    pipeline = _pipeline(target_id, kind)
+def _backend(target_id: str, pkind: str):
+    pipeline = _pipeline(target_id, pkind)
     if target_id == "splunk":
         from sigma.backends.splunk import SplunkBackend
 
@@ -166,7 +184,7 @@ def _backend(target_id: str, kind: str):
 def convert_text(rule_yaml: str, target: str, kind: str = CLASSIC) -> str:
     """Convert a rule document (possibly multi-doc) to one query string for ``target``."""
     collection = SigmaCollection.from_yaml(rule_yaml)
-    backend = _backend(target, kind)
+    backend = _backend(target, _pipeline_kind(kind, rule_yaml))
     try:
         queries = backend.convert(collection)
     except Exception as exc:  # pragma: no cover - surfaced as ConversionError

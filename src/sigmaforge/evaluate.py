@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,8 @@ from sigma.conditions import (
     ConditionOR,
     ConditionValueExpression,
 )
+from sigma.correlations import SigmaCorrelationCondition, SigmaCorrelationRule, SigmaCorrelationType
+from sigma.correlations import SigmaCorrelationConditionOperator as CorrOp
 from sigma.rule import SigmaRule
 from sigma.types import (
     SigmaCompareExpression,
@@ -170,12 +173,99 @@ def matches(rule: SigmaRule, event: dict[str, Any]) -> bool:
     return _eval(condition, event)
 
 
+def load_collection(path: Path) -> SigmaCollection:
+    return SigmaCollection.from_yaml(Path(path).read_text(encoding="utf-8"))
+
+
 def load_rule(path: Path) -> SigmaRule:
-    collection = SigmaCollection.from_yaml(Path(path).read_text(encoding="utf-8"))
-    rule = collection.rules[0]
+    rule = load_collection(path).rules[0]
     if not isinstance(rule, SigmaRule):
-        raise UnsupportedFeatureError(f"{path} is not a plain Sigma rule (correlation rules unsupported)")
+        raise UnsupportedFeatureError(
+            f"{path} is not a plain Sigma rule (use correlation_triggers for correlations)"
+        )
     return rule
+
+
+# --- correlation evaluation ----------------------------------------------
+
+def _parse_ts(event: dict[str, Any]) -> float:
+    """Parse an event timestamp to epoch seconds (0.0 if absent/unparseable)."""
+    raw = event.get("timestamp")
+    if not isinstance(raw, str):
+        return 0.0
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return 0.0
+
+
+def _compare(value: float, op: CorrOp, threshold: float) -> bool:
+    return {
+        CorrOp.GT: value > threshold,
+        CorrOp.GTE: value >= threshold,
+        CorrOp.LT: value < threshold,
+        CorrOp.LTE: value <= threshold,
+        CorrOp.EQ: value == threshold,
+        CorrOp.NEQ: value != threshold,
+    }[op]
+
+
+def _windows(items: list[tuple[float, Any]], span: float):
+    """Yield each maximal set of items whose timestamps fall within ``span`` seconds.
+
+    Two-pointer sweep over time-sorted (ts, payload) pairs; one window anchored at
+    each item start, which is sufficient to find the peak count / distinct count.
+    """
+    items = sorted(items, key=lambda x: x[0])
+    n = len(items)
+    j = 0
+    for i in range(n):
+        if j < i:
+            j = i
+        while j + 1 < n and items[j + 1][0] - items[i][0] <= span:
+            j += 1
+        yield items[i : j + 1]
+
+
+def correlation_triggers(collection: SigmaCollection, events: list[dict[str, Any]]) -> bool:
+    """Evaluate a Sigma correlation rule (event_count / value_count) over an event set."""
+    corr = next((r for r in collection.rules if isinstance(r, SigmaCorrelationRule)), None)
+    if corr is None:
+        raise UnsupportedFeatureError("no correlation rule found in collection")
+    if corr.type not in (SigmaCorrelationType.EVENT_COUNT, SigmaCorrelationType.VALUE_COUNT):
+        raise UnsupportedFeatureError(f"unsupported correlation type: {corr.type.name}")
+
+    bases = [r for r in collection.rules if isinstance(r, SigmaRule)]
+    matched = [e for e in events if any(matches(b, e) for b in bases)]
+
+    condition = corr.condition
+    if not isinstance(condition, SigmaCorrelationCondition):
+        raise UnsupportedFeatureError("extended correlation conditions are not supported")
+
+    group_by = [g for g in (corr.group_by or []) if isinstance(g, str)]
+    span = float(corr.timespan.seconds) if corr.timespan else float("inf")
+    op, threshold = condition.op, float(condition.count)
+    fieldref = condition.fieldref
+
+    groups: dict[tuple, list[dict[str, Any]]] = {}
+    for e in matched:
+        key = tuple(_resolve_field(e, g)[1] for g in group_by)
+        groups.setdefault(key, []).append(e)
+
+    for evs in groups.values():
+        timed = [(_parse_ts(e), e) for e in evs]
+        for window in _windows(timed, span):
+            if corr.type == SigmaCorrelationType.EVENT_COUNT:
+                measure: float = len(window)
+            else:  # value_count
+                if not isinstance(fieldref, str):
+                    raise UnsupportedFeatureError(
+                        "value_count correlation requires a single 'field'"
+                    )
+                measure = len({_resolve_field(e, fieldref)[1] for _, e in window})
+            if _compare(measure, op, threshold):
+                return True
+    return False
 
 
 # --- fire-test orchestration ----------------------------------------------
@@ -201,7 +291,7 @@ class FireTestReport:
 
 def _sample_path(rule_path: Path, polarity: str) -> Path:
     rule_path = Path(rule_path)
-    sub = rule_path.parent.name  # classic / llm
+    sub = rule_path.parent.name  # classic / llm / correlation
     return REPO_ROOT / "sample_logs" / sub / f"{rule_path.stem}.{polarity}.json"
 
 
@@ -212,18 +302,32 @@ def _load_events(path: Path) -> list[dict[str, Any]]:
     return data if isinstance(data, list) else [data]
 
 
+def _is_correlation(path: Path) -> bool:
+    collection = load_collection(path)
+    return any(isinstance(r, SigmaCorrelationRule) for r in collection.rules)
+
+
 def fire_test(rule_path: Path) -> FireTestReport:
     rule_path = Path(rule_path)
-    rule = load_rule(rule_path)
     report = FireTestReport(name=rule_path.stem)
 
     positives = _load_events(_sample_path(rule_path, "positive"))
     negatives = _load_events(_sample_path(rule_path, "negative"))
-
     if not positives and not negatives:
         report.skipped = True
         return report
 
+    if _is_correlation(rule_path):
+        # Each fixture file is ONE scenario: the positive set must trigger the
+        # correlation, the negative set must not.
+        collection = load_collection(rule_path)
+        report.positives_total = 1
+        report.positives_matched = 1 if correlation_triggers(collection, positives) else 0
+        report.negatives_total = 1
+        report.negatives_clean = 0 if correlation_triggers(collection, negatives) else 1
+        return report
+
+    rule = load_rule(rule_path)
     report.positives_total = len(positives)
     report.positives_matched = sum(1 for e in positives if matches(rule, e))
     report.negatives_total = len(negatives)

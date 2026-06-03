@@ -1,0 +1,6 @@
+llm_prompt IN ("*ignore previous instructions*", "*ignore all previous*", "*developer mode*", "*do anything now*", "*bypass your guidelines*")
+
+| bin _time span=10m
+| stats count as event_count by _time user_id
+
+| search event_count >= 3
