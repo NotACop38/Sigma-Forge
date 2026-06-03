@@ -83,6 +83,10 @@ uv run sigma-forge coverage
 make test
 ```
 
+<div align="center">
+<img src="docs/images/demo.gif" alt="sigma-forge convert, fire-test, and make test" width="90%">
+</div>
+
 ---
 
 ## Repo layout
