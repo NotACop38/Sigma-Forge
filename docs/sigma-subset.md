@@ -36,6 +36,23 @@ message rather than silently mis-matching.
 - value **lists = OR**; multiple fields in a map = **AND**
 - keyword (free-text) detections — matched against all scalar values in the event
 
+### Correlation rules
+Sigma correlation rules are supported for **`event_count`** and **`value_count`**:
+
+- `group-by` one or more fields, a `timespan`, and a `condition` (`gte` / `gt` /
+  `lte` / `lt` / `eq` / `neq`; `value_count` also takes a `field`).
+- The evaluator matches events against the base rule(s), buckets them by the
+  group-by key, and slides a `timespan` window over each bucket (using the event
+  `timestamp`), triggering when the count / distinct-value count crosses the
+  threshold.
+- **Fire-test fixtures for correlations are scenarios**: the `*.positive.json`
+  event set must trigger the correlation, the `*.negative.json` set must not.
+- **Backend support:** correlations convert to **Splunk SPL** only. The Kusto
+  backend and the Splunk **SPL2** backend raise `NotImplementedError` for
+  correlations, so those targets are skipped (documented, not silent).
+- `temporal*` and `value_sum/avg/percentile/median` correlation types are **not**
+  implemented by the offline evaluator and raise a clear error.
+
 ### Field resolution
 Both **flat dotted keys** (`{"llm.prompt": "..."}`) and **nested objects**
 (`{"llm": {"prompt": "..."}}`) are resolved, so the same rule works against
