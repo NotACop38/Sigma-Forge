@@ -1,0 +1,1 @@
+EventID=1 Image="*\\certutil.exe" CommandLine IN ("*urlcache*", "*verifyctl*", "*-decode*", "*/decode*")

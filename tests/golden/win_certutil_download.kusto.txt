@@ -1,0 +1,2 @@
+DeviceProcessEvents
+| where FolderPath endswith "\\certutil.exe" and (ProcessCommandLine contains "urlcache" or ProcessCommandLine contains "verifyctl" or ProcessCommandLine contains "-decode" or ProcessCommandLine contains "/decode")

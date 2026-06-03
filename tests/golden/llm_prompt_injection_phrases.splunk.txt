@@ -1,0 +1,1 @@
+llm_prompt IN ("*ignore previous instructions*", "*ignore all previous*", "*disregard the above*", "*disregard your instructions*", "*developer mode*", "*do anything now*", "*you are now DAN*", "*bypass your guidelines*", "*reveal your system prompt*")

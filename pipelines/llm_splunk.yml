@@ -1,0 +1,32 @@
+# sigma-forge — Splunk processing pipeline for the synthetic LLM-gateway logsource.
+#
+# Splunk's schema is flexible, so this pipeline simply (a) recognises the custom
+# `llm_app` logsource and (b) flattens the dotted JSON field names of the
+# llm_app schema (see src/sigmaforge/llm_schema.py) to the underscore field
+# names a Splunk index would typically extract.
+name: sigma-forge LLM gateway (Splunk)
+priority: 10
+transformations:
+  - id: llm_field_names
+    type: field_name_mapping
+    mapping:
+      llm.prompt: llm_prompt
+      llm.completion: llm_completion
+      llm.prompt_tokens: llm_prompt_tokens
+      llm.completion_tokens: llm_completion_tokens
+      llm.model: llm_model
+      user.id: user_id
+      app.id: app_id
+      request.source_ip: src_ip
+      tool.name: tool_name
+      tool.target_host: tool_target_host
+    rule_conditions:
+      - type: logsource
+        product: llm_app
+  - id: llm_logsource_supported
+    type: set_state
+    key: llm_app_supported
+    val: true
+    rule_conditions:
+      - type: logsource
+        product: llm_app

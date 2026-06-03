@@ -1,0 +1,38 @@
+# sigma-forge — Kusto (KQL) processing pipeline for the synthetic LLM-gateway logsource.
+#
+# The AttackIQ Kusto backend reads the destination table from the pipeline state
+# key `query_table`. We point the custom `llm_app` logsource at a custom Log
+# Analytics table `LLMAppLogs_CL` and map the dotted llm_app schema fields
+# (see src/sigmaforge/llm_schema.py) to that table's columns.
+#
+# NOTE (documented limitation): the Kusto backend is built around Microsoft's
+# native tables (DeviceProcessEvents, etc.). Targeting a custom *_CL table works
+# via the query_table state key shown here, but the column names below are an
+# illustrative convention for the synthetic schema, not a Microsoft-defined
+# table. See docs/sigma-subset.md and the README "Limitations" section.
+name: sigma-forge LLM gateway (Kusto)
+priority: 10
+transformations:
+  - id: llm_set_query_table
+    type: set_state
+    key: query_table
+    val: LLMAppLogs_CL
+    rule_conditions:
+      - type: logsource
+        product: llm_app
+  - id: llm_field_names
+    type: field_name_mapping
+    mapping:
+      llm.prompt: PromptText
+      llm.completion: CompletionText
+      llm.prompt_tokens: PromptTokens
+      llm.completion_tokens: CompletionTokens
+      llm.model: ModelName
+      user.id: UserId
+      app.id: AppId
+      request.source_ip: SourceIP
+      tool.name: ToolName
+      tool.target_host: ToolTargetHost
+    rule_conditions:
+      - type: logsource
+        product: llm_app

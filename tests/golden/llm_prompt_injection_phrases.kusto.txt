@@ -1,0 +1,2 @@
+LLMAppLogs_CL
+| where PromptText contains "ignore previous instructions" or PromptText contains "ignore all previous" or PromptText contains "disregard the above" or PromptText contains "disregard your instructions" or PromptText contains "developer mode" or PromptText contains "do anything now" or PromptText contains "you are now DAN" or PromptText contains "bypass your guidelines" or PromptText contains "reveal your system prompt"

@@ -1,0 +1,20 @@
+[
+  {
+    "EventID": 1,
+    "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    "CommandLine": "powershell.exe -nop -w hidden -enc JABjAGwAaQBlAG4AdAA9AG4AZQB3AC0AbwBiAGoA",
+    "ParentImage": "C:\\Windows\\System32\\cmd.exe"
+  },
+  {
+    "EventID": 1,
+    "Image": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+    "CommandLine": "pwsh -EncodedCommand SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQA",
+    "ParentImage": "C:\\Windows\\explorer.exe"
+  },
+  {
+    "EventID": 1,
+    "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    "CommandLine": "powershell -Command [System.Convert]::FromBase64String('aGVsbG8=')",
+    "ParentImage": "C:\\Windows\\System32\\services.exe"
+  }
+]

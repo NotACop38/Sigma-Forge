@@ -1,0 +1,14 @@
+[
+  {
+    "EventID": 1,
+    "Image": "C:\\Windows\\System32\\certutil.exe",
+    "CommandLine": "certutil.exe -store my",
+    "ParentImage": "C:\\Windows\\System32\\cmd.exe"
+  },
+  {
+    "EventID": 1,
+    "Image": "C:\\Windows\\System32\\curl.exe",
+    "CommandLine": "curl -o C:\\temp\\file.zip https://example.com/file.zip",
+    "ParentImage": "C:\\Windows\\System32\\cmd.exe"
+  }
+]

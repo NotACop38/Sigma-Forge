@@ -1,0 +1,42 @@
+title: LLM Prompt Injection Override Phrases
+id: 34d7f816-3c5c-4aae-8d03-0c7294f5ec7d
+status: experimental
+description: >
+  Detects classic prompt-injection / jailbreak override phrases in a user prompt
+  sent to an LLM application (e.g. "ignore previous instructions", "developer
+  mode", "do anything now"). Maps to OWASP Top 10 for LLM Applications LLM01
+  (Prompt Injection) and MITRE ATLAS LLM Prompt Injection / LLM Jailbreak.
+  Authored from public OWASP and MITRE ATLAS references against the synthetic
+  llm_app schema; no proprietary content.
+author: sigma-forge
+date: 2026-06-03
+references:
+  - https://owasp.org/www-project-top-10-for-large-language-model-applications/
+  - https://atlas.mitre.org/techniques/AML.T0051
+  - https://atlas.mitre.org/techniques/AML.T0054
+logsource:
+  product: llm_app
+  category: gateway
+detection:
+  selection:
+    llm.prompt|contains:
+      - 'ignore previous instructions'
+      - 'ignore all previous'
+      - 'disregard the above'
+      - 'disregard your instructions'
+      - 'developer mode'
+      - 'do anything now'
+      - 'you are now DAN'
+      - 'bypass your guidelines'
+      - 'reveal your system prompt'
+  condition: selection
+falsepositives:
+  - Security researchers or red-teamers testing model guardrails.
+  - Documentation or training content that quotes these phrases.
+level: high
+tags:
+  - attack.initial-access
+  - owasp.llm01
+  - atlas.t0051
+  - atlas.t0051.000
+  - atlas.t0054

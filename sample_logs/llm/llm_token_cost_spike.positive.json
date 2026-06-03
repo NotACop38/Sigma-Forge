@@ -1,0 +1,24 @@
+[
+  {
+    "timestamp": "2026-06-03T12:10:00Z",
+    "user.id": "user-4401",
+    "app.id": "batch-summarizer",
+    "llm.model": "forge-instruct-1",
+    "llm.prompt": "<<very large pasted document>>",
+    "llm.completion": "summary",
+    "llm.prompt_tokens": 24000,
+    "llm.completion_tokens": 120,
+    "request.source_ip": "198.51.100.55"
+  },
+  {
+    "timestamp": "2026-06-03T12:11:00Z",
+    "user.id": "user-4402",
+    "app.id": "batch-summarizer",
+    "llm.model": "forge-instruct-1",
+    "llm.prompt": "Write an extremely long essay.",
+    "llm.completion": "<<runaway generation>>",
+    "llm.prompt_tokens": 60,
+    "llm.completion_tokens": 16000,
+    "request.source_ip": "198.51.100.56"
+  }
+]
