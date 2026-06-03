@@ -237,6 +237,14 @@ separate **gitleaks** job scans for secrets, and a **Pages** workflow publishes 
 
 ---
 
+## Contributing & security
+
+Contributions are welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup and
+the rule-authoring workflow. To report a vulnerability privately, follow the
+[security policy](SECURITY.md).
+
+---
+
 ## License
 
 - **Code** — [MIT](LICENSE).
