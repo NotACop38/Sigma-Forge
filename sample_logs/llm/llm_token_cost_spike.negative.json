@@ -1,0 +1,24 @@
+[
+  {
+    "timestamp": "2026-06-03T12:12:00Z",
+    "user.id": "user-4403",
+    "app.id": "batch-summarizer",
+    "llm.model": "forge-instruct-1",
+    "llm.prompt": "Summarize this short email thread.",
+    "llm.completion": "Here is the summary.",
+    "llm.prompt_tokens": 420,
+    "llm.completion_tokens": 180,
+    "request.source_ip": "203.0.113.70"
+  },
+  {
+    "timestamp": "2026-06-03T12:13:00Z",
+    "user.id": "user-4404",
+    "app.id": "batch-summarizer",
+    "llm.model": "forge-instruct-1",
+    "llm.prompt": "Draft a polite reply.",
+    "llm.completion": "Sure, here is a draft reply you can use.",
+    "llm.prompt_tokens": 90,
+    "llm.completion_tokens": 240,
+    "request.source_ip": "203.0.113.71"
+  }
+]

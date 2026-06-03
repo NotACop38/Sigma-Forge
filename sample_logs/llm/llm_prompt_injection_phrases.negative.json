@@ -1,0 +1,24 @@
+[
+  {
+    "timestamp": "2026-06-03T12:03:00Z",
+    "user.id": "user-2203",
+    "app.id": "support-assistant",
+    "llm.model": "forge-instruct-1",
+    "llm.prompt": "Can you summarize today's incident report in three bullet points?",
+    "llm.completion": "Sure, here are three bullets...",
+    "llm.prompt_tokens": 28,
+    "llm.completion_tokens": 60,
+    "request.source_ip": "203.0.113.10"
+  },
+  {
+    "timestamp": "2026-06-03T12:04:00Z",
+    "user.id": "user-2204",
+    "app.id": "support-assistant",
+    "llm.model": "forge-instruct-1",
+    "llm.prompt": "Translate the following paragraph into French, please.",
+    "llm.completion": "Voici la traduction...",
+    "llm.prompt_tokens": 40,
+    "llm.completion_tokens": 55,
+    "request.source_ip": "203.0.113.11"
+  }
+]

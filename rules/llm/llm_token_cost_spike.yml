@@ -1,0 +1,33 @@
+title: LLM Token Consumption Spike
+id: 0cab2979-0451-48b0-bb5f-b1875d12e4d6
+status: experimental
+description: >
+  Detects a single LLM request whose prompt or completion token count is far
+  above normal application traffic, an indicator of unbounded consumption /
+  denial-of-wallet abuse against a metered model endpoint. Maps to OWASP Top 10
+  for LLM Applications LLM10 (Unbounded Consumption) and MITRE ATLAS Cost
+  Harvesting / Denial of AI Service. Thresholds are illustrative for the
+  synthetic llm_app schema and should be tuned per environment.
+author: sigma-forge
+date: 2026-06-03
+references:
+  - https://owasp.org/www-project-top-10-for-large-language-model-applications/
+  - https://atlas.mitre.org/techniques/AML.T0034
+  - https://atlas.mitre.org/techniques/AML.T0029
+logsource:
+  product: llm_app
+  category: gateway
+detection:
+  selection_prompt:
+    llm.prompt_tokens|gte: 8000
+  selection_completion:
+    llm.completion_tokens|gte: 8000
+  condition: 1 of selection_*
+falsepositives:
+  - Legitimate large-context workloads (e.g. long-document summarization).
+level: medium
+tags:
+  - attack.impact
+  - owasp.llm10
+  - atlas.t0034
+  - atlas.t0029

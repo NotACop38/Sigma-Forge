@@ -36,6 +36,7 @@ from sigma.conditions import (
 )
 from sigma.rule import SigmaRule
 from sigma.types import (
+    SigmaCompareExpression,
     SigmaNull,
     SigmaNumber,
     SigmaRegularExpression,
@@ -107,6 +108,21 @@ def _match_value(event_value: Any, sigma_value: Any) -> bool:
             return float(event_value) == float(sigma_value.to_plain())  # type: ignore[arg-type]
         except (TypeError, ValueError):
             return False
+
+    if isinstance(sigma_value, SigmaCompareExpression):
+        try:
+            left = float(event_value)
+            right = float(sigma_value.number.to_plain())  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return False
+        ops = SigmaCompareExpression.CompareOperators
+        return {
+            ops.GT: left > right,
+            ops.GTE: left >= right,
+            ops.LT: left < right,
+            ops.LTE: left <= right,
+            ops.NEQ: left != right,
+        }[sigma_value.op]
 
     raise UnsupportedFeatureError(
         f"unsupported value type in detection: {type(sigma_value).__name__}"
