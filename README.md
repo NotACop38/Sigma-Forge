@@ -6,7 +6,7 @@
 
 **Detection-as-code: author Sigma once → ship Splunk SPL & Microsoft Sentinel KQL, proven in CI.**
 
-[![CI](https://img.shields.io/github/actions/workflow/status/NotACop38/Sigma-Forge/ci.yml?branch=claude/sigma-forge-platform-Pv6qK&style=flat-square&label=CI)](https://github.com/NotACop38/Sigma-Forge/actions/workflows/ci.yml)
+[![CI](https://img.shields.io/github/actions/workflow/status/NotACop38/Sigma-Forge/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/NotACop38/Sigma-Forge/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Rules: DRL-1.1](https://img.shields.io/badge/rules-DRL--1.1-blue?style=flat-square)](rules/LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776ab?style=flat-square&logo=python&logoColor=white)](pyproject.toml)
