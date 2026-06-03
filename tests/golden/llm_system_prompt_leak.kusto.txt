@@ -1,0 +1,2 @@
+LLMAppLogs_CL
+| where CompletionText contains "You are a helpful assistant" or CompletionText contains "system prompt:" or CompletionText contains "my instructions are" or CompletionText contains "my system prompt" or CompletionText contains "I was instructed to" or CompletionText contains "BEGIN SYSTEM PROMPT"

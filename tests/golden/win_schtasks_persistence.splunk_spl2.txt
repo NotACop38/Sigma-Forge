@@ -1,0 +1,1 @@
+FROM main WHERE EventID=1 AND Image LIKE "%\schtasks.exe" AND CommandLine LIKE "%/create%"

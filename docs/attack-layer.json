@@ -9,6 +9,18 @@
   "description": "Coverage generated from sigma-forge rule tags.",
   "techniques": [
     {
+      "techniqueID": "T1003.001",
+      "score": 1,
+      "comment": "LSASS Memory Dump via comsvcs.dll MiniDump",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "1"
+        }
+      ]
+    },
+    {
       "techniqueID": "T1027",
       "score": 1,
       "comment": "Encoded PowerShell Command Execution",
@@ -24,6 +36,18 @@
       "techniqueID": "T1047",
       "score": 1,
       "comment": "WMIC Process Creation",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "1"
+        }
+      ]
+    },
+    {
+      "techniqueID": "T1053.005",
+      "score": 1,
+      "comment": "Scheduled Task Creation via schtasks",
       "enabled": true,
       "metadata": [
         {
@@ -60,6 +84,18 @@
       "techniqueID": "T1140",
       "score": 1,
       "comment": "Certutil Download or Decode Activity",
+      "enabled": true,
+      "metadata": [
+        {
+          "name": "rules",
+          "value": "1"
+        }
+      ]
+    },
+    {
+      "techniqueID": "T1490",
+      "score": 1,
+      "comment": "Volume Shadow Copy Deletion via VSSAdmin",
       "enabled": true,
       "metadata": [
         {

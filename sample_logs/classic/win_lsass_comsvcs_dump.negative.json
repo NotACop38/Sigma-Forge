@@ -1,0 +1,4 @@
+[
+  {"EventID":1,"Image":"C:\\Windows\\System32\\rundll32.exe","CommandLine":"rundll32.exe shell32.dll,Control_RunDLL desk.cpl","ParentImage":"C:\\Windows\\explorer.exe"},
+  {"EventID":1,"Image":"C:\\Windows\\System32\\rundll32.exe","CommandLine":"rundll32 comsvcs.dll DllGetClassObject","ParentImage":"C:\\Windows\\System32\\svchost.exe"}
+]

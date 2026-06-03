@@ -1,0 +1,1 @@
+FROM main WHERE EventID=1 AND Image LIKE "%\vssadmin.exe" AND CommandLine LIKE "%delete%" AND CommandLine LIKE "%shadows%"

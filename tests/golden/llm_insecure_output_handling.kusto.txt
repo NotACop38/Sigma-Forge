@@ -1,0 +1,2 @@
+LLMAppLogs_CL
+| where CompletionText contains "<script" or CompletionText contains "javascript:" or CompletionText contains "onerror=" or CompletionText contains "onload=" or CompletionText contains "<iframe" or CompletionText contains "DROP TABLE" or CompletionText contains "UNION SELECT"

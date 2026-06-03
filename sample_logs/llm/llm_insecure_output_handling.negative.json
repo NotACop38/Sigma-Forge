@@ -1,0 +1,4 @@
+[
+  {"timestamp":"2026-06-03T13:02:00Z","user.id":"user-5503","app.id":"web-assistant","llm.model":"forge-instruct-1","llm.prompt":"Write a welcome message","llm.completion":"Welcome! We're glad you're here.","llm.prompt_tokens":10,"llm.completion_tokens":12,"request.source_ip":"203.0.113.80"},
+  {"timestamp":"2026-06-03T13:03:00Z","user.id":"user-5504","app.id":"report-bot","llm.model":"forge-instruct-1","llm.prompt":"Explain SQL joins","llm.completion":"A JOIN combines rows from two tables based on a related column.","llm.prompt_tokens":9,"llm.completion_tokens":22,"request.source_ip":"203.0.113.81"}
+]

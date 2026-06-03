@@ -1,0 +1,36 @@
+title: Insecure LLM Output (Active Content in Completion)
+id: e29f3765-04ef-4886-8620-03db7b2f8f96
+status: experimental
+description: >
+  Detects an LLM completion containing active/executable content (HTML script
+  tags, javascript: URIs, event handlers, or SQL statements) that, if rendered
+  or executed by a downstream consumer without sanitisation, could lead to
+  XSS, SSRF, or injection. Maps to OWASP Top 10 for LLM Applications LLM05
+  (Improper Output Handling) and MITRE ATLAS External Harms. Authored against
+  the synthetic llm_app schema.
+author: sigma-forge
+date: 2026-06-03
+references:
+  - https://owasp.org/www-project-top-10-for-large-language-model-applications/
+  - https://atlas.mitre.org/techniques/AML.T0048
+logsource:
+  product: llm_app
+  category: gateway
+detection:
+  selection:
+    llm.completion|contains:
+      - '<script'
+      - 'javascript:'
+      - 'onerror='
+      - 'onload='
+      - '<iframe'
+      - 'DROP TABLE'
+      - 'UNION SELECT'
+  condition: selection
+falsepositives:
+  - Developer assistants legitimately returning code samples; review consumer-side handling.
+level: high
+tags:
+  - attack.initial-access
+  - owasp.llm05
+  - atlas.t0048

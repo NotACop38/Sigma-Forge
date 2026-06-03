@@ -1,0 +1,1 @@
+FROM main WHERE EventID=1 AND Image LIKE "%\rundll32.exe" AND CommandLine LIKE "%comsvcs%" AND CommandLine LIKE "%MiniDump%"

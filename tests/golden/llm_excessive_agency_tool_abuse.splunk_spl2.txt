@@ -1,0 +1,1 @@
+FROM main WHERE tool_name IN ("shell\_exec", "run\_command", "delete\_file", "send\_email", "http\_request") AND match(tool_target_host, /(?i)(\\.internal\\b|\\.local\\b|^10\\.|^192\\.168\\.|^169\\.254\\.169\\.254$)/)

@@ -1,0 +1,4 @@
+[
+  {"EventID":1,"Image":"C:\\Windows\\System32\\rundll32.exe","CommandLine":"rundll32.exe C:\\Windows\\System32\\comsvcs.dll, MiniDump 624 C:\\temp\\lsass.dmp full","ParentImage":"C:\\Windows\\System32\\cmd.exe"},
+  {"EventID":1,"Image":"C:\\Windows\\System32\\rundll32.exe","CommandLine":"rundll32 comsvcs.dll MiniDump 700 lsass.dmp full","ParentImage":"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"}
+]

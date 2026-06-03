@@ -1,0 +1,1 @@
+FROM main WHERE llm_completion LIKE "%<script%" OR llm_completion LIKE "%javascript:%" OR llm_completion LIKE "%onerror=%" OR llm_completion LIKE "%onload=%" OR llm_completion LIKE "%<iframe%" OR llm_completion LIKE "%DROP TABLE%" OR llm_completion LIKE "%UNION SELECT%"

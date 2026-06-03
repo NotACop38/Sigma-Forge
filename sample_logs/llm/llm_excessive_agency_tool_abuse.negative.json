@@ -1,0 +1,4 @@
+[
+  {"timestamp":"2026-06-03T13:12:00Z","user.id":"user-6603","app.id":"ops-agent","llm.model":"forge-instruct-1","llm.prompt":"search docs","llm.completion":"calling doc_search","tool.name":"doc_search","tool.target_host":"wiki.internal","request.source_ip":"203.0.113.90"},
+  {"timestamp":"2026-06-03T13:13:00Z","user.id":"user-6604","app.id":"ops-agent","llm.model":"forge-instruct-1","llm.prompt":"fetch public price","llm.completion":"calling http_request","tool.name":"http_request","tool.target_host":"api.partner.example.com","request.source_ip":"203.0.113.91"}
+]

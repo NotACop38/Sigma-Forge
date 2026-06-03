@@ -1,0 +1,28 @@
+title: Volume Shadow Copy Deletion via VSSAdmin
+id: 5c395174-cd5b-4a09-a00f-8759c80f7cc1
+status: experimental
+description: >
+  Detects deletion of Volume Shadow Copies via vssadmin.exe, a common
+  precursor to ransomware impact used to inhibit system recovery. Authored
+  from public MITRE ATT&CK references.
+author: sigma-forge
+date: 2026-06-03
+references:
+  - https://attack.mitre.org/techniques/T1490/
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_img:
+    Image|endswith: '\vssadmin.exe'
+  selection_cmd:
+    CommandLine|contains|all:
+      - 'delete'
+      - 'shadows'
+  condition: selection_img and selection_cmd
+falsepositives:
+  - Backup software performing legitimate shadow-copy maintenance.
+level: high
+tags:
+  - attack.impact
+  - attack.t1490
