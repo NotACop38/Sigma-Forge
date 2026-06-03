@@ -116,7 +116,7 @@ def evaluate(
         table.add_row(
             f.stem,
             f"{report.positives_matched}/{report.positives_total}",
-            f"{report.negatives_matched}/{report.negatives_total}",
+            f"{report.negatives_clean}/{report.negatives_total}",
             verdict,
         )
     console.print(table)

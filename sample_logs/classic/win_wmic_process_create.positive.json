@@ -1,0 +1,14 @@
+[
+  {
+    "EventID": 1,
+    "Image": "C:\\Windows\\System32\\wbem\\wmic.exe",
+    "CommandLine": "wmic process call create \"calc.exe\"",
+    "ParentImage": "C:\\Windows\\System32\\cmd.exe"
+  },
+  {
+    "EventID": 1,
+    "Image": "C:\\Windows\\System32\\wbem\\wmic.exe",
+    "CommandLine": "wmic /node:WS01 process call create \"powershell -nop -w hidden\"",
+    "ParentImage": "C:\\Windows\\explorer.exe"
+  }
+]

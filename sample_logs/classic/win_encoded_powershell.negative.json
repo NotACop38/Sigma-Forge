@@ -1,0 +1,20 @@
+[
+  {
+    "EventID": 1,
+    "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    "CommandLine": "powershell.exe -File C:\\scripts\\backup.ps1 -Verbose",
+    "ParentImage": "C:\\Windows\\System32\\taskeng.exe"
+  },
+  {
+    "EventID": 1,
+    "Image": "C:\\Windows\\System32\\cmd.exe",
+    "CommandLine": "cmd.exe /c dir C:\\Users",
+    "ParentImage": "C:\\Windows\\explorer.exe"
+  },
+  {
+    "EventID": 1,
+    "Image": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+    "CommandLine": "pwsh -Command Get-Process | Sort-Object CPU",
+    "ParentImage": "C:\\Windows\\explorer.exe"
+  }
+]

