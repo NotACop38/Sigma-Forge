@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="280" viewBox="0 0 1200 280" role="img" aria-label="sigma-forge — detection-as-code">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d1117"/>
+      <stop offset="1" stop-color="#161b22"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#4cc9f0"/>
+      <stop offset="1" stop-color="#80ffdb"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="280" fill="url(#bg)"/>
+  <rect width="1200" height="280" fill="none" stroke="#30363d" stroke-width="2"/>
+
+  <!-- subtle forge spark / shield motif -->
+  <g opacity="0.9" transform="translate(96,140)">
+    <path d="M0,-58 L52,-34 L52,20 C52,52 28,72 0,84 C-28,72 -52,52 -52,20 L-52,-34 Z"
+          fill="none" stroke="url(#accent)" stroke-width="4"/>
+    <path d="M-18,-6 L4,-6 L-8,14 L16,14 L-12,46 L-2,18 L-22,18 Z"
+          fill="url(#accent)"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="190" y="128" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace"
+        font-size="76" font-weight="700" fill="#e6edf3" letter-spacing="1">
+    sigma<tspan fill="url(#accent)">-forge</tspan>
+  </text>
+
+  <text x="192" y="172" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace"
+        font-size="25" fill="#8b949e" letter-spacing="0.5">
+    detection-as-code &#8226; Sigma &#8594; Splunk SPL &amp; Sentinel KQL &#8226; fire-tested in CI
+  </text>
+
+  <!-- pipeline ribbon -->
+  <g font-family="'JetBrains Mono',Consolas,monospace" font-size="19" fill="#0d1117">
+    <rect x="192" y="206" width="118" height="36" rx="6" fill="#4cc9f0"/>
+    <text x="251" y="230" text-anchor="middle" font-weight="700">author</text>
+    <rect x="330" y="206" width="86" height="36" rx="6" fill="#56d4c0"/>
+    <text x="373" y="230" text-anchor="middle" font-weight="700">lint</text>
+    <rect x="436" y="206" width="132" height="36" rx="6" fill="#6ce0b0"/>
+    <text x="502" y="230" text-anchor="middle" font-weight="700">convert</text>
+    <rect x="588" y="206" width="150" height="36" rx="6" fill="#80ffdb"/>
+    <text x="663" y="230" text-anchor="middle" font-weight="700">fire-test</text>
+    <rect x="758" y="206" width="70" height="36" rx="6" fill="#a0ffe6"/>
+    <text x="793" y="230" text-anchor="middle" font-weight="700">CI</text>
+  </g>
+  <g fill="#484f58" font-family="monospace" font-size="20">
+    <text x="318" y="231">&#8594;</text>
+    <text x="421" y="231">&#8594;</text>
+    <text x="573" y="231">&#8594;</text>
+    <text x="743" y="231">&#8594;</text>
+  </g>
+</svg>
