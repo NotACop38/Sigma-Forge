@@ -15,8 +15,12 @@ concurrency:
 
 jobs:
   build:
-    name: lint • convert • fire-test
+    name: lint • convert • fire-test (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
 
@@ -25,31 +29,33 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Set up Python 3.11
-        run: uv python install 3.11
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
 
       - name: Sync dependencies (incl. sigma backends + pipelines)
-        run: uv sync --frozen
+        run: uv sync --frozen --python ${{ matrix.python-version }}
 
       - name: Confirm sigma plugins
-        run: uv run sigma list targets
+        run: uv run --python ${{ matrix.python-version }} sigma list targets
 
       - name: Ruff (lint)
-        run: uv run ruff check src tests
+        run: uv run --python ${{ matrix.python-version }} ruff check src tests
 
       - name: Mypy (type check)
-        run: uv run mypy
+        run: uv run --python ${{ matrix.python-version }} mypy
 
-      - name: Convert every rule to Splunk SPL and Sentinel KQL (fail on error)
-        run: uv run sigma-forge convert --all --check
+      - name: Convert every rule to SPL/SPL2 and Sentinel/Defender KQL (fail on error)
+        run: uv run --python ${{ matrix.python-version }} sigma-forge convert --all --check
 
       - name: Pytest (lint + convert goldens + fire-tests)
-        run: uv run pytest
+        run: uv run --python ${{ matrix.python-version }} pytest
 
       - name: Build ATT&CK Navigator layer + heatmap
+        if: matrix.python-version == '3.11'
         run: uv run sigma-forge coverage --layer docs/attack-layer.json --png docs/images/attack-layer.png
 
       - name: Upload ATT&CK Navigator layer artifact
+        if: matrix.python-version == '3.11'
         uses: actions/upload-artifact@v4
         with:
           name: attack-navigator-layer

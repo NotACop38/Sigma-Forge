@@ -32,3 +32,12 @@ def test_build_coverage_writes_files(tmp_path):
     summary = cov.build_coverage(layer_path=layer, png_path=png)
     assert layer.exists() and png.exists()
     assert summary.attack_technique_count >= 3
+
+
+def test_build_site_emits_pages_bundle(tmp_path):
+    site = tmp_path / "_site"
+    summary = cov.build_site(site)
+    for name in ("index.html", "attack-layer.png", "attack-layer.json"):
+        assert (site / name).exists(), f"missing {name}"
+    html = (site / "index.html").read_text(encoding="utf-8")
+    assert str(summary.attack_technique_count) in html

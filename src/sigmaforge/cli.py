@@ -130,15 +130,22 @@ def evaluate(
 def coverage(
     layer: Path = typer.Option(Path("docs/attack-layer.json"), help="Navigator layer JSON output."),
     png: Path = typer.Option(Path("docs/images/attack-layer.png"), help="Heatmap PNG output."),
+    site: Path | None = typer.Option(
+        None, "--site", help="Also build a static coverage site (for GitHub Pages) in this dir."
+    ),
 ) -> None:
     """Emit an ATT&CK Navigator layer and render the static heatmap PNG."""
     from . import coverage as coverage_mod
 
-    summary = coverage_mod.build_coverage(layer_path=layer, png_path=png)
-    console.print(
-        f"[green]Wrote {layer}[/green] ({summary.attack_technique_count} ATT&CK techniques) "
-        f"and [green]{png}[/green]."
-    )
+    if site is not None:
+        summary = coverage_mod.build_site(site)
+        console.print(f"[green]Built coverage site in {site}[/green].")
+    else:
+        summary = coverage_mod.build_coverage(layer_path=layer, png_path=png)
+        console.print(
+            f"[green]Wrote {layer}[/green] ({summary.attack_technique_count} ATT&CK techniques) "
+            f"and [green]{png}[/green]."
+        )
     if summary.atlas_technique_count:
         console.print(
             f"[cyan]ATLAS coverage:[/cyan] {summary.atlas_technique_count} technique(s) "
