@@ -60,7 +60,6 @@ def convert(
         console.print("[yellow]No rules found.[/yellow]")
         raise typer.Exit()
 
-    targets = (target,) if target else convert_mod.TARGETS
     failures = 0
     for f in files:
         console.rule(f"[bold cyan]{f.stem}")
@@ -70,11 +69,14 @@ def convert(
             failures += 1
             console.print(f"[red]conversion failed:[/red] {exc}")
             continue
-        for t in targets:
-            label = convert_mod.TARGET_LABELS[t]
-            lang = "sql" if t == "kusto" else "text"
-            console.print(f"[bold]{label}[/bold]")
-            console.print(Syntax(result.query(t), lang, theme="ansi_dark", word_wrap=True))
+        wanted = [target] if target else list(result.queries)
+        for t in wanted:
+            if t not in result.queries:
+                console.print(f"[dim]{convert_mod.TARGET_LABELS.get(t, t)}: n/a for this rule[/dim]")
+                continue
+            tgt = convert_mod.TARGETS[t]
+            console.print(f"[bold]{tgt.label}[/bold]")
+            console.print(Syntax(result.query(t), tgt.lang, theme="ansi_dark", word_wrap=True))
 
     if check and failures:
         console.print(f"[red]{failures} rule(s) failed to convert.[/red]")

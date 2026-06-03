@@ -1,0 +1,2 @@
+imProcessCreate
+| where (TargetProcessName endswith "\\powershell.exe" or TargetProcessName endswith "\\pwsh.exe") and (TargetProcessCommandLine contains " -enc " or TargetProcessCommandLine contains " -EncodedCommand " or TargetProcessCommandLine contains " -ec " or TargetProcessCommandLine contains "FromBase64String")

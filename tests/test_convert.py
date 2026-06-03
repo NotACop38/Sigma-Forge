@@ -1,4 +1,4 @@
-"""Conversion tests: every rule converts without error and matches its golden snapshot."""
+"""Conversion tests: every rule converts for each applicable target and matches its golden."""
 
 from __future__ import annotations
 
@@ -10,31 +10,33 @@ from sigmaforge import convert as convert_mod
 
 GOLDEN_DIR = Path(__file__).resolve().parent / "golden"
 RULE_FILES = convert_mod.iter_rule_files()
-RULE_IDS = [f.stem for f in RULE_FILES]
+
+# Build the (rule, target) matrix from each rule's kind.
+CASES: list[tuple[Path, str]] = []
+for _f in RULE_FILES:
+    for _t in convert_mod.targets_for(convert_mod.rule_kind(_f)):
+        CASES.append((_f, _t))
+CASE_IDS = [f"{f.stem}-{t}" for f, t in CASES]
 
 
 def test_rules_exist():
     assert RULE_FILES, "no rule files discovered under rules/"
 
 
-@pytest.mark.parametrize("rule_path", RULE_FILES, ids=RULE_IDS)
-def test_converts_to_both_backends(rule_path: Path):
+@pytest.mark.parametrize(("rule_path", "target"), CASES, ids=CASE_IDS)
+def test_converts_for_target(rule_path: Path, target: str):
     conv = convert_mod.convert_file(rule_path)
-    for target in convert_mod.TARGETS:
-        query = conv.query(target)
-        assert query, f"{rule_path.stem} produced empty {target} output"
+    assert conv.query(target), f"{rule_path.stem} produced empty {target} output"
 
 
-@pytest.mark.parametrize("rule_path", RULE_FILES, ids=RULE_IDS)
-def test_matches_golden(rule_path: Path):
+@pytest.mark.parametrize(("rule_path", "target"), CASES, ids=CASE_IDS)
+def test_matches_golden(rule_path: Path, target: str):
     conv = convert_mod.convert_file(rule_path)
-    for target in convert_mod.TARGETS:
-        golden = GOLDEN_DIR / f"{conv.name}.{target}.txt"
-        assert golden.exists(), (
-            f"missing golden snapshot {golden.name}; run `make golden` to create it"
-        )
-        expected = golden.read_text(encoding="utf-8").strip()
-        actual = conv.query(target).strip()
-        assert actual == expected, (
-            f"{conv.name} {target} drifted from golden snapshot; run `make golden` to update"
-        )
+    golden = GOLDEN_DIR / f"{conv.name}.{target}.txt"
+    assert golden.exists(), (
+        f"missing golden snapshot {golden.name}; run `make golden` to create it"
+    )
+    expected = golden.read_text(encoding="utf-8").strip()
+    assert conv.query(target).strip() == expected, (
+        f"{conv.name} {target} drifted from golden; run `make golden` to update"
+    )

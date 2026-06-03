@@ -1,0 +1,1 @@
+FROM main WHERE EventID=1 AND Image LIKE "%\wmic.exe" AND CommandLine LIKE "%process%" AND CommandLine LIKE "%call%" AND CommandLine LIKE "%create%"
