@@ -1,0 +1,29 @@
+title: WMIC Process Creation
+id: a139d3ab-3e04-46db-a080-d129fc0b8d31
+status: experimental
+description: >
+  Detects use of wmic.exe to spawn a new process via "process call create",
+  a Windows Management Instrumentation technique used for local and remote
+  execution. Authored from public MITRE ATT&CK references.
+author: sigma-forge
+date: 2026-06-03
+references:
+  - https://attack.mitre.org/techniques/T1047/
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_img:
+    Image|endswith: '\wmic.exe'
+  selection_cmd:
+    CommandLine|contains|all:
+      - 'process'
+      - 'call'
+      - 'create'
+  condition: selection_img and selection_cmd
+falsepositives:
+  - Administrative tooling that provisions processes through WMI.
+level: medium
+tags:
+  - attack.execution
+  - attack.t1047
