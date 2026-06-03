@@ -1,0 +1,2 @@
+DeviceProcessEvents
+| where FolderPath endswith "\\wmic.exe" and (ProcessCommandLine contains "process" and ProcessCommandLine contains "call" and ProcessCommandLine contains "create")

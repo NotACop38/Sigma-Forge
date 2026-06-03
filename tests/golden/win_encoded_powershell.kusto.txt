@@ -1,0 +1,2 @@
+DeviceProcessEvents
+| where (FolderPath endswith "\\powershell.exe" or FolderPath endswith "\\pwsh.exe") and (ProcessCommandLine contains " -enc " or ProcessCommandLine contains " -EncodedCommand " or ProcessCommandLine contains " -ec " or ProcessCommandLine contains "FromBase64String")

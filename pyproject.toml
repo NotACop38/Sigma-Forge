@@ -53,7 +53,8 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "W"]
-ignore = ["E501"]
+# B008: typer uses Argument()/Option() calls as parameter defaults by design.
+ignore = ["E501", "B008"]
 
 [tool.mypy]
 python_version = "3.11"
