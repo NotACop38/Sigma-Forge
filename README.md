@@ -4,25 +4,33 @@
 
 # sigma-forge
 
-**Detection-as-code: author Sigma once → ship Splunk SPL & Microsoft Sentinel KQL, proven in CI.**
+#### Detection-as-code: author Sigma once → ship Splunk SPL &amp; Microsoft Sentinel KQL, *proven* in CI.
 
-[![CI](https://img.shields.io/github/actions/workflow/status/NotACop38/Sigma-Forge/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/NotACop38/Sigma-Forge/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![Rules: DRL-1.1](https://img.shields.io/badge/rules-DRL--1.1-blue?style=flat-square)](rules/LICENSE)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776ab?style=flat-square&logo=python&logoColor=white)](pyproject.toml)
+[![CI](https://img.shields.io/github/actions/workflow/status/NotACop38/Sigma-Forge/ci.yml?branch=main&style=for-the-badge&label=CI&logo=githubactions&logoColor=white)](https://github.com/NotACop38/Sigma-Forge/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-2ea043?style=for-the-badge)](LICENSE)
+[![Rules: DRL-1.1](https://img.shields.io/badge/rules-DRL--1.1-1f6feb?style=for-the-badge)](rules/LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776ab?style=for-the-badge&logo=python&logoColor=white)](pyproject.toml)
+
+[![pySigma](https://img.shields.io/badge/built%20on-pySigma-4cc9f0?style=flat-square)](https://github.com/SigmaHQ/pySigma)
 [![Ruff](https://img.shields.io/badge/lint-ruff-261230?style=flat-square&logo=ruff&logoColor=white)](https://github.com/astral-sh/ruff)
+[![Type-checked: mypy](https://img.shields.io/badge/typed-mypy-2a6db0?style=flat-square)](https://mypy-lang.org/)
 [![MITRE ATT&CK](https://img.shields.io/badge/MITRE-ATT%26CK-c4282b?style=flat-square)](https://attack.mitre.org/)
 [![MITRE ATLAS](https://img.shields.io/badge/MITRE-ATLAS-6f42c1?style=flat-square)](https://atlas.mitre.org/)
+[![OWASP LLM Top 10](https://img.shields.io/badge/OWASP-LLM%20Top%2010-000000?style=flat-square)](https://owasp.org/www-project-top-10-for-large-language-model-applications/)
+
+**[Quickstart](#-quickstart)** · **[Detection packs](#-detection-packs)** · **[Architecture](#-architecture)** · **[Example output](#-example-output)** · **[Threat model](#-aillm-threat-model)** · **[Limitations](#limitations--scope)**
 
 </div>
 
 <div align="center">
 <img src="docs/images/attack-layer.png" alt="MITRE ATT&CK coverage heatmap" width="85%">
+<br/>
+<sub><i>MITRE ATT&amp;CK coverage — rendered straight from rule tags by <code>sigma-forge coverage</code>.</i></sub>
 </div>
 
 ---
 
-## What it is
+## 🔎 What it is
 
 **sigma-forge** is a detection-as-code starter that authors vendor-neutral **Sigma** rules and
 converts them to **Splunk SPL** and **Microsoft Sentinel (ASIM) & Defender (XDR) KQL** with
@@ -34,7 +42,7 @@ drafter** gated by a deterministic validator.
 
 ---
 
-## Highlights
+## ✨ Highlights
 
 - 🛡️ **Multi-backend** — one Sigma source compiles to Splunk **SPL** and Microsoft **Defender/XDR** + **Sentinel/ASIM** KQL, no copy-paste drift.
 - ✅ **Fire-tested** — each rule must match positive sample logs and ignore negatives, enforced in CI (Python 3.11 **and** 3.12).
@@ -45,7 +53,7 @@ drafter** gated by a deterministic validator.
 
 ---
 
-## Architecture
+## 🏗️ Architecture
 
 ```mermaid
 flowchart LR
@@ -65,7 +73,7 @@ flowchart LR
 
 ---
 
-## Quickstart
+## 🚀 Quickstart
 
 ```bash
 # 1. Clone and install (uv handles the venv + sigma backends/pipelines)
@@ -91,7 +99,7 @@ make test
 
 ---
 
-## Repo layout
+## 📁 Repo layout
 
 ```text
 rules/            classic/ (ATT&CK) · llm/ (OWASP LLM + ATLAS) · correlation/   — DRL-1.1
@@ -105,7 +113,7 @@ docs/             threat-model.md · sigma-subset.md · images/ (banner, heatmap
 
 ---
 
-## Detection packs
+## 🎯 Detection packs
 
 Backends: **SPL** (Splunk), **XDR** (Defender KQL), **ASIM** (Sentinel KQL).
 
@@ -153,7 +161,7 @@ Splunk SPL — the Kusto backend does not implement Sigma correlations.
 
 ---
 
-## Example output
+## 🔁 Example output
 
 A single Sigma rule (`win_encoded_powershell`, ATT&CK **T1059.001 + T1027**) converts to both
 backends:
@@ -179,7 +187,7 @@ LLMAppLogs_CL
 
 ---
 
-## AI/LLM threat model
+## 🧠 AI/LLM threat model
 
 The AI/LLM pack maps log-observable risks on a fictional **LLM gateway** to public frameworks —
 **OWASP Top 10 for LLM Applications** and **MITRE ATLAS**. Full narratives, technique IDs, and
@@ -187,7 +195,7 @@ honest limitations are in **[`docs/threat-model.md`](docs/threat-model.md)**.
 
 ---
 
-## Optional: local-first rule drafter
+## 🤖 Optional: local-first rule drafter
 
 Draft a new rule from a plain-English sentence using a **local** LLM — then let a deterministic
 validator decide whether to keep it:
@@ -203,7 +211,7 @@ uv run sigma-forge draft "detect base64-encoded PowerShell downloads" --out rule
 
 ---
 
-## How CI works
+## ⚙️ How CI works
 
 On every push and PR, across a **Python 3.11 + 3.12** matrix: `uv sync` → **ruff** + **mypy** →
 convert *all* rules to SPL + Defender/Sentinel KQL (fail on any conversion error) → **pytest**
@@ -213,8 +221,10 @@ with `sigma-forge coverage --site _site` (heatmap PNG + Navigator layer + an `in
 
 ---
 
+<a id="limitations--scope"></a>
+
 <details>
-<summary><b>Limitations &amp; scope</b></summary>
+<summary><b>⚠️ Limitations &amp; scope</b> — honest caveats (click to expand)</summary>
 
 - **KQL for the custom LLM logsource.** The AttackIQ Kusto backend is built around Microsoft's
   native tables. sigma-forge targets a *custom* `LLMAppLogs_CL` Log Analytics table via the
@@ -237,7 +247,7 @@ with `sigma-forge coverage --site _site` (heatmap PNG + Navigator layer + an `in
 
 ---
 
-## Contributing & security
+## 🤝 Contributing & security
 
 Contributions are welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup and
 the rule-authoring workflow. To report a vulnerability privately, follow the
@@ -245,13 +255,13 @@ the rule-authoring workflow. To report a vulnerability privately, follow the
 
 ---
 
-## License
+## 📜 License
 
 - **Code** — [MIT](LICENSE).
 - **Detection rules** (`rules/`) — [Detection Rule License (DRL) 1.1](rules/LICENSE), the same
   permissive license SigmaHQ uses for community content.
 
-## Acknowledgments
+## 🙏 Acknowledgments
 
 Built on the work of [**SigmaHQ**](https://github.com/SigmaHQ/sigma) and
 [**pySigma**](https://github.com/SigmaHQ/pySigma), the
