@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -56,6 +57,7 @@ class UnsupportedFeatureError(NotImplementedError):
 
 # --- field resolution -----------------------------------------------------
 
+
 def _resolve_field(event: dict[str, Any], field: str) -> tuple[bool, Any]:
     """Resolve a (possibly dotted) field name. Returns (present, value)."""
     if field in event:
@@ -70,6 +72,7 @@ def _resolve_field(event: dict[str, Any], field: str) -> tuple[bool, Any]:
 
 
 # --- SigmaString -> regex --------------------------------------------------
+
 
 def _sigmastring_to_regex(value: SigmaString) -> re.Pattern[str]:
     """Build an anchored, case-insensitive regex from a SigmaString's parts."""
@@ -88,6 +91,7 @@ def _sigmastring_to_regex(value: SigmaString) -> re.Pattern[str]:
 
 
 # --- leaf matching ---------------------------------------------------------
+
 
 def _match_value(event_value: Any, sigma_value: Any) -> bool:
     if isinstance(event_value, list):
@@ -150,6 +154,7 @@ def _match_keyword(event: dict[str, Any], sigma_value: Any) -> bool:
 
 # --- recursive tree evaluation --------------------------------------------
 
+
 def _eval(node: Any, event: dict[str, Any]) -> bool:
     if isinstance(node, ConditionAND):
         return all(_eval(arg, event) for arg in node.args)
@@ -162,9 +167,7 @@ def _eval(node: Any, event: dict[str, Any]) -> bool:
         return _match_value(event_value, node.value)
     if isinstance(node, ConditionValueExpression):
         return _match_keyword(event, node.value)
-    raise UnsupportedFeatureError(
-        f"unsupported condition construct: {type(node).__name__}"
-    )
+    raise UnsupportedFeatureError(f"unsupported condition construct: {type(node).__name__}")
 
 
 def matches(rule: SigmaRule, event: dict[str, Any]) -> bool:
@@ -188,6 +191,7 @@ def load_rule(path: Path) -> SigmaRule:
 
 # --- correlation evaluation ----------------------------------------------
 
+
 def _parse_ts(event: dict[str, Any]) -> float:
     """Parse an event timestamp to epoch seconds (0.0 if absent/unparseable)."""
     raw = event.get("timestamp")
@@ -210,21 +214,59 @@ def _compare(value: float, op: CorrOp, threshold: float) -> bool:
     }[op]
 
 
-def _windows(items: list[tuple[float, Any]], span: float):
-    """Yield each maximal set of items whose timestamps fall within ``span`` seconds.
+MAX_FIXTURE_EVENTS = 5_000
+MAX_CORRELATION_GROUP_EVENTS = 5_000
 
-    Two-pointer sweep over time-sorted (ts, payload) pairs; one window anchored at
-    each item start, which is sufficient to find the peak count / distinct count.
+
+def _check_fixture_size(events: list[dict[str, Any]], path: Path) -> None:
+    """Refuse unexpectedly large synthetic fixtures before CI spends time on them."""
+    if len(events) > MAX_FIXTURE_EVENTS:
+        raise UnsupportedFeatureError(
+            f"{path} has {len(events)} events; maximum supported fixture size is "
+            f"{MAX_FIXTURE_EVENTS}"
+        )
+
+
+def _check_correlation_group_size(evs: list[dict[str, Any]]) -> None:
+    """Bound per-group correlation work for untrusted rules and fixtures."""
+    if len(evs) > MAX_CORRELATION_GROUP_EVENTS:
+        raise UnsupportedFeatureError(
+            f"correlation group has {len(evs)} events; maximum supported group size is "
+            f"{MAX_CORRELATION_GROUP_EVENTS}"
+        )
+
+
+def _window_measures(
+    items: list[tuple[float, dict[str, Any]]],
+    span: float,
+    fieldref: str | None,
+):
+    """Yield maximal sliding-window counts without materializing window slices.
+
+    One maximal window is examined for each timestamp-sorted start event, matching
+    the previous correlation semantics while keeping CPU and memory linear after
+    sorting. For value_count correlations, a moving Counter tracks distinct field
+    values incrementally instead of rebuilding a set for each overlapping window.
     """
     items = sorted(items, key=lambda x: x[0])
-    n = len(items)
-    j = 0
-    for i in range(n):
-        if j < i:
-            j = i
-        while j + 1 < n and items[j + 1][0] - items[i][0] <= span:
-            j += 1
-        yield items[i : j + 1]
+    counts: Counter[Any] = Counter()
+    right = 0
+
+    for left, (start_ts, start_event) in enumerate(items):
+        while right < len(items) and items[right][0] - start_ts <= span:
+            if fieldref is not None:
+                counts[_resolve_field(items[right][1], fieldref)[1]] += 1
+            right += 1
+
+        if fieldref is None:
+            yield float(right - left)
+        else:
+            yield float(len(counts))
+
+            value = _resolve_field(start_event, fieldref)[1]
+            counts[value] -= 1
+            if counts[value] <= 0:
+                del counts[value]
 
 
 def correlation_triggers(collection: SigmaCollection, events: list[dict[str, Any]]) -> bool:
@@ -260,23 +302,25 @@ def correlation_triggers(collection: SigmaCollection, events: list[dict[str, Any
         key = tuple(_resolve_field(e, g)[1] for g in group_by)
         groups.setdefault(key, []).append(e)
 
+    if corr.type == SigmaCorrelationType.VALUE_COUNT and not isinstance(fieldref, str):
+        raise UnsupportedFeatureError("value_count correlation requires a single 'field'")
+
     for evs in groups.values():
+        _check_correlation_group_size(evs)
         timed = [(_parse_ts(e), e) for e in evs]
-        for window in _windows(timed, span):
-            if corr.type == SigmaCorrelationType.EVENT_COUNT:
-                measure: float = len(window)
-            else:  # value_count
-                if not isinstance(fieldref, str):
-                    raise UnsupportedFeatureError(
-                        "value_count correlation requires a single 'field'"
-                    )
-                measure = len({_resolve_field(e, fieldref)[1] for _, e in window})
+        value_field: str | None = (
+            fieldref
+            if corr.type == SigmaCorrelationType.VALUE_COUNT and isinstance(fieldref, str)
+            else None
+        )
+        for measure in _window_measures(timed, span, value_field):
             if _compare(measure, op, threshold):
                 return True
     return False
 
 
 # --- fire-test orchestration ----------------------------------------------
+
 
 @dataclass
 class FireTestReport:
@@ -307,7 +351,9 @@ def _load_events(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
     data = json.loads(path.read_text(encoding="utf-8"))
-    return data if isinstance(data, list) else [data]
+    events = data if isinstance(data, list) else [data]
+    _check_fixture_size(events, path)
+    return events
 
 
 def _is_correlation(path: Path) -> bool:
