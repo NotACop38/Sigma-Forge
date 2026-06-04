@@ -247,7 +247,7 @@ _SITE_HTML = """<!doctype html>
 
 
 def build_site(site_dir: Path, paths: list[Path] | None = None) -> CoverageSummary:
-    """Build a static coverage site (index.html + heatmap PNG + layer JSON) for GitHub Pages."""
+    """Build a self-contained static coverage site (index.html + heatmap PNG + layer JSON)."""
     site_dir = Path(site_dir)
     site_dir.mkdir(parents=True, exist_ok=True)
     summary = build_coverage(

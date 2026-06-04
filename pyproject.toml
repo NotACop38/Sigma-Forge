@@ -6,6 +6,15 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "sigma-forge" }]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Typing :: Typed",
+]
 keywords = [
     "detection-engineering",
     "detection-as-code",
@@ -28,6 +37,11 @@ dependencies = [
     "sigma-cli>=3.0.2",
     "typer>=0.26.7",
 ]
+
+[project.urls]
+Homepage = "https://github.com/NotACop38/Sigma-Forge"
+Repository = "https://github.com/NotACop38/Sigma-Forge"
+Issues = "https://github.com/NotACop38/Sigma-Forge/issues"
 
 [project.scripts]
 sigma-forge = "sigmaforge.cli:app"

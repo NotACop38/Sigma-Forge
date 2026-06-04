@@ -136,7 +136,7 @@ def coverage(
     layer: Path = typer.Option(Path("docs/attack-layer.json"), help="Navigator layer JSON output."),
     png: Path = typer.Option(Path("docs/images/attack-layer.png"), help="Heatmap PNG output."),
     site: Path | None = typer.Option(
-        None, "--site", help="Also build a static coverage site (for GitHub Pages) in this dir."
+        None, "--site", help="Also build a static coverage site (index.html + PNG + layer) in this dir."
     ),
 ) -> None:
     """Emit an ATT&CK Navigator layer and render the static heatmap PNG."""

@@ -3,7 +3,7 @@
 # Secret scanning (gitleaks) runs first so credentials never reach a commit.
 repos:
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.21.2
+    rev: v8.24.3
     hooks:
       - id: gitleaks
 
