@@ -41,7 +41,7 @@ drafter** gated by a deterministic validator.
 - 🤖 **AI/LLM threat pack** — prompt injection, sensitive-info disclosure, output handling, excessive agency, system-prompt leakage, and unbounded consumption, mapped to OWASP LLM + ATLAS.
 - 🔗 **Correlation rules** — `event_count` / `value_count` aggregation over a `timespan` (e.g. injection bursts and tool fan-out per `user.id`), fire-tested over multi-event scenarios.
 - 🔒 **Local-first drafter** — draft new rules from a sentence via a *local* LLM; never accepts a rule that fails lint → convert → fire-test.
-- 🗺️ **ATT&CK heatmap + Pages** — a Navigator layer + rendered coverage PNG, generated from rule tags and publishable to GitHub Pages.
+- 🗺️ **ATT&CK heatmap** — a Navigator layer (v4.x JSON) + a rendered coverage PNG, generated from rule tags.
 
 ---
 
@@ -100,7 +100,7 @@ sample_logs/      *.positive.json / *.negative.json fire-test fixtures
 src/sigmaforge/   cli · convert · evaluate · coverage · lint · llm_schema · draft
 tests/            test_lint · test_convert (goldens) · test_evaluate · test_correlation · test_draft
 docs/             threat-model.md · sigma-subset.md · images/ (banner, heatmap)
-.github/          ci.yml (3.11/3.12 matrix) · pages.yml (coverage site)
+.github/          ci.yml (3.11/3.12 matrix · gitleaks secret-scan) · dependabot.yml
 ```
 
 ---
@@ -208,8 +208,8 @@ uv run sigma-forge draft "detect base64-encoded PowerShell downloads" --out rule
 On every push and PR, across a **Python 3.11 + 3.12** matrix: `uv sync` → **ruff** + **mypy** →
 convert *all* rules to SPL + Defender/Sentinel KQL (fail on any conversion error) → **pytest**
 (lint, golden conversions, fire-tests) → upload the ATT&CK Navigator layer JSON as an artifact. A
-separate **gitleaks** job scans for secrets, and a **Pages** workflow publishes the coverage site
-(`sigma-forge coverage --site`) on pushes to `main`.
+separate **gitleaks** job scans for secrets. You can also build a static coverage report locally
+with `sigma-forge coverage --site _site` (heatmap PNG + Navigator layer + an `index.html`).
 
 ---
 
@@ -234,6 +234,14 @@ separate **gitleaks** job scans for secrets, and a **Pages** workflow publishes 
 - **Synthetic everything.** All logs, fields, and identifiers are fictional and product-agnostic.
 
 </details>
+
+---
+
+## Contributing & security
+
+Contributions are welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup and
+the rule-authoring workflow. To report a vulnerability privately, follow the
+[security policy](SECURITY.md).
 
 ---
 
