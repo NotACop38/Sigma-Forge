@@ -122,8 +122,9 @@ def _synthesize(node: Any) -> tuple[dict[str, Any], bool]:
             best = best or (sub, False)
         return best or ({}, False)
     if isinstance(node, ConditionNOT):
-        # Satisfied by NOT setting the inner field; common for "sel and not filter".
-        return {}, True
+        # Absence may satisfy NOT filters in common "sel and not filter" rules,
+        # but a NOT branch alone is not a guaranteed high-signal positive event.
+        return {}, False
     if isinstance(node, ConditionValueExpression):
         if isinstance(node.value, SigmaString):
             return {"_keyword": _literal(node.value)}, True
@@ -191,12 +192,15 @@ def validate_rule_yaml(rule_yaml: str) -> DraftResult:
     synth_event, guaranteed = _synthesize(condition)
     try:
         fired = evaluate_mod.matches(rule, synth_event)
-        evaluate_mod.matches(rule, {})  # negative-ish probe: must not raise
+        empty_fired = evaluate_mod.matches(rule, {})
     except evaluate_mod.UnsupportedFeatureError as exc:
         result.errors.append(("fire-test", f"rule uses an unsupported construct: {exc}"))
         return result
     if guaranteed and not fired:
         result.errors.append(("fire-test", "synthesized positive event did not fire the rule"))
+        return result
+    if empty_fired:
+        result.errors.append(("fire-test", "rule matches an empty event"))
         return result
 
     result.accepted = True
