@@ -1,8 +1,9 @@
-# Keep dependencies and GitHub Actions patched automatically.
+# Keep dependencies, GitHub Actions, and pre-commit hooks patched automatically.
 # https://docs.github.com/code-security/dependabot/dependabot-version-updates
 version: 2
 updates:
-  - package-ecosystem: "pip"
+  # Python deps are managed by uv (uv.lock); the "uv" ecosystem updates the lock.
+  - package-ecosystem: "uv"
     directory: "/"
     schedule:
       interval: "weekly"
@@ -21,3 +22,14 @@ updates:
       github-actions:
         patterns: ["*"]
     labels: ["dependencies", "github-actions"]
+
+  # Keeps the gitleaks + ruff pre-commit hook revisions current.
+  - package-ecosystem: "pre-commit"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      pre-commit:
+        patterns: ["*"]
+    labels: ["dependencies", "pre-commit"]
