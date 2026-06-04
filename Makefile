@@ -3,6 +3,8 @@
 .DEFAULT_GOAL := help
 RUN := uv run
 RULES := rules/classic rules/llm
+PROMPT ?=
+export PROMPT
 
 .PHONY: help install lint typecheck convert evaluate coverage test golden draft clean
 
@@ -36,7 +38,7 @@ test: ## Run the full test suite (lint, convert, evaluate)
 	$(RUN) pytest
 
 draft: ## Draft a rule from a threat sentence via a LOCAL LLM (needs a running endpoint)
-	$(RUN) sigma-forge draft "$(PROMPT)"
+	$(RUN) sigma-forge draft "$$PROMPT"
 
 clean: ## Remove caches and build artifacts
 	rm -rf .pytest_cache .mypy_cache .ruff_cache build dist *.egg-info
