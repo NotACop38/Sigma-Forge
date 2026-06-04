@@ -3,7 +3,7 @@ id: 93fd6ce6-6e03-489c-ab1f-b7a96115bd5f
 status: experimental
 description: >
   Detects PowerShell executed with an encoded/Base64 command line
-  (-EncodedCommand / -enc) or in-line FromBase64String decoding, a common
+  (-EncodedCommand / -enc / -e) or in-line FromBase64String decoding, a common
   technique for obfuscating malicious script content. Authored from public
   MITRE ATT&CK references; not derived from any proprietary detection.
 author: sigma-forge
@@ -24,6 +24,7 @@ detection:
       - ' -enc '
       - ' -EncodedCommand '
       - ' -ec '
+      - ' -e '
       - 'FromBase64String'
   condition: selection_img and selection_enc
 falsepositives:
