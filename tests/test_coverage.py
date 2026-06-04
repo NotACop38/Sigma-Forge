@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 
+import pytest
+
 from sigmaforge import coverage as cov
 
 _TECH = re.compile(r"^T\d{4}(\.\d{3})?$")
@@ -41,3 +43,39 @@ def test_build_site_emits_pages_bundle(tmp_path):
         assert (site / name).exists(), f"missing {name}"
     html = (site / "index.html").read_text(encoding="utf-8")
     assert str(summary.attack_technique_count) in html
+
+
+def test_build_site_removes_stale_files(tmp_path):
+    site = tmp_path / "_site"
+    site.mkdir()
+    stale = site / "stale.txt"
+    stale.write_text("do not publish", encoding="utf-8")
+
+    cov.build_site(site)
+
+    assert not stale.exists()
+    assert sorted(path.name for path in site.iterdir()) == [
+        "attack-layer.json",
+        "attack-layer.png",
+        "index.html",
+    ]
+
+
+def test_build_site_replaces_symlink_before_writing(tmp_path):
+    target = tmp_path / "fake_checkout" / ".git"
+    target.mkdir(parents=True)
+    protected = target / "config"
+    protected.write_text("token-like checkout metadata", encoding="utf-8")
+    site = tmp_path / "_site"
+    site.symlink_to(target, target_is_directory=True)
+
+    if not site.is_symlink():
+        pytest.skip("filesystem does not support directory symlinks")
+
+    cov.build_site(site)
+
+    assert not site.is_symlink()
+    assert site.is_dir()
+    assert protected.read_text(encoding="utf-8") == "token-like checkout metadata"
+    assert not (target / "index.html").exists()
+    assert (site / "index.html").exists()
