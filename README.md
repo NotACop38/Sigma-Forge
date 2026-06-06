@@ -4,7 +4,7 @@
 
 # sigma-forge
 
-#### Detection-as-code: author Sigma once → ship Splunk SPL &amp; Microsoft Sentinel KQL, *proven* in CI.
+#### Detection-as-code: author Sigma once, ship Splunk SPL &amp; Microsoft Sentinel KQL, *proven* in CI.
 
 [![CI](https://img.shields.io/github/actions/workflow/status/NotACop38/Sigma-Forge/ci.yml?branch=main&style=for-the-badge&label=CI&logo=githubactions&logoColor=white)](https://github.com/NotACop38/Sigma-Forge/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2ea043?style=for-the-badge)](LICENSE)
@@ -18,42 +18,42 @@
 [![MITRE ATLAS](https://img.shields.io/badge/MITRE-ATLAS-6f42c1?style=flat-square)](https://atlas.mitre.org/)
 [![OWASP LLM Top 10](https://img.shields.io/badge/OWASP-LLM%20Top%2010-000000?style=flat-square)](https://owasp.org/www-project-top-10-for-large-language-model-applications/)
 
-**[Quickstart](#-quickstart)** · **[Detection packs](#-detection-packs)** · **[Architecture](#-architecture)** · **[Example output](#-example-output)** · **[Threat model](#-aillm-threat-model)** · **[Limitations](#limitations--scope)**
+**[Quickstart](#quickstart)** · **[Detection packs](#detection-packs)** · **[Architecture](#architecture)** · **[Example output](#example-output)** · **[Threat model](#aillm-threat-model)** · **[Limitations](#limitations--scope)**
 
 </div>
 
 <div align="center">
 <img src="docs/images/attack-layer.png" alt="MITRE ATT&CK coverage heatmap" width="85%">
 <br/>
-<sub><i>MITRE ATT&amp;CK coverage — rendered straight from rule tags by <code>sigma-forge coverage</code>.</i></sub>
+<sub><i>MITRE ATT&amp;CK coverage, rendered straight from rule tags by <code>sigma-forge coverage</code>.</i></sub>
 </div>
 
 ---
 
-## 🔎 What it is
+## What it is
 
 **sigma-forge** is a detection-as-code starter that authors vendor-neutral **Sigma** rules and
 converts them to **Splunk SPL** and **Microsoft Sentinel (ASIM) & Defender (XDR) KQL** with
-pySigma. Every rule is **fire-tested in CI** against synthetic JSON logs — so coverage claims are
-*proven*, not asserted — and tagged to **MITRE ATT&CK** and **MITRE ATLAS**. Alongside a classic
+pySigma. Every rule is **fire-tested in CI** against synthetic JSON logs (so coverage claims are
+*proven*, not asserted) and tagged to **MITRE ATT&CK** and **MITRE ATLAS**. Alongside a classic
 host-detection pack it ships an **AI/LLM-application threat pack** (OWASP Top 10 for LLM + ATLAS),
 **Sigma correlation rules** (multi-event aggregation), and an optional **local-first LLM rule
 drafter** gated by a deterministic validator.
 
 ---
 
-## ✨ Highlights
+## Highlights
 
-- 🛡️ **Multi-backend** — one Sigma source compiles to Splunk **SPL** and Microsoft **Defender/XDR** + **Sentinel/ASIM** KQL, no copy-paste drift.
-- ✅ **Fire-tested** — each rule must match positive sample logs and ignore negatives, enforced in CI (Python 3.11 **and** 3.12).
-- 🤖 **AI/LLM threat pack** — prompt injection, sensitive-info disclosure, output handling, excessive agency, system-prompt leakage, and unbounded consumption, mapped to OWASP LLM + ATLAS.
-- 🔗 **Correlation rules** — `event_count` / `value_count` aggregation over a `timespan` (e.g. injection bursts and tool fan-out per `user.id`), fire-tested over multi-event scenarios.
-- 🔒 **Local-first drafter** — draft new rules from a sentence via a *local* LLM; never accepts a rule that fails lint → convert → fire-test.
-- 🗺️ **ATT&CK heatmap** — a Navigator layer (v4.x JSON) + a rendered coverage PNG, generated from rule tags.
+- **Multi-backend:** one Sigma source compiles to Splunk **SPL** and Microsoft **Defender/XDR** + **Sentinel/ASIM** KQL, no copy-paste drift.
+- **Fire-tested:** each rule must match positive sample logs and ignore negatives, enforced in CI (Python 3.11 **and** 3.12).
+- **AI/LLM threat pack:** prompt injection, sensitive-info disclosure, output handling, excessive agency, system-prompt leakage, and unbounded consumption, mapped to OWASP LLM + ATLAS.
+- **Correlation rules:** `event_count` / `value_count` aggregation over a `timespan` (e.g. injection bursts and tool fan-out per `user.id`), fire-tested over multi-event scenarios.
+- **Local-first drafter:** draft new rules from a sentence via a *local* LLM; never accepts a rule that fails lint, convert, or fire-test.
+- **ATT&CK heatmap:** a Navigator layer (v4.x JSON) plus a rendered coverage PNG, generated from rule tags.
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ```mermaid
 flowchart LR
@@ -62,7 +62,7 @@ flowchart LR
     C -->|pySigma| D[Splunk SPL]
     C -->|pySigma| E[Sentinel KQL]
     A --> F[fire-test<br/>synthetic JSON logs]
-    D --> G([CI: green ✓])
+    D --> G([CI: green])
     E --> G
     F --> G
     A -. tags .-> H[ATT&CK + ATLAS<br/>coverage]
@@ -73,7 +73,7 @@ flowchart LR
 
 ---
 
-## 🚀 Quickstart
+## Quickstart
 
 ```bash
 # 1. Clone and install (uv handles the venv + sigma backends/pipelines)
@@ -89,7 +89,7 @@ uv run sigma-forge evaluate --all
 # 4. Build the ATT&CK Navigator layer + heatmap PNG
 uv run sigma-forge coverage
 
-# 5. Run the full suite (lint + convert goldens + fire-tests) — needs NO API keys
+# 5. Run the full suite (lint + convert goldens + fire-tests); needs NO API keys
 make test
 ```
 
@@ -99,10 +99,10 @@ make test
 
 ---
 
-## 📁 Repo layout
+## Repo layout
 
 ```text
-rules/            classic/ (ATT&CK) · llm/ (OWASP LLM + ATLAS) · correlation/   — DRL-1.1
+rules/            classic/ (ATT&CK) · llm/ (OWASP LLM + ATLAS) · correlation/   (DRL-1.1)
 pipelines/        custom SPL + KQL processing pipelines for the llm_app logsource
 sample_logs/      *.positive.json / *.negative.json fire-test fixtures
 src/sigmaforge/   cli · convert · evaluate · coverage · lint · llm_schema · draft
@@ -113,11 +113,11 @@ docs/             threat-model.md · sigma-subset.md · images/ (banner, heatmap
 
 ---
 
-## 🎯 Detection packs
+## Detection packs
 
 Backends: **SPL** (Splunk), **XDR** (Defender KQL), **ASIM** (Sentinel KQL).
 
-**Classic — MITRE ATT&CK** (`process_creation`)
+**Classic: MITRE ATT&CK** (`process_creation`)
 
 | Rule | ATT&CK | Backends |
 |------|--------|----------|
@@ -128,7 +128,7 @@ Backends: **SPL** (Splunk), **XDR** (Defender KQL), **ASIM** (Sentinel KQL).
 | `win_lsass_comsvcs_dump` | T1003.001 | SPL · XDR · ASIM |
 | `win_schtasks_persistence` | T1053.005 | SPL · XDR · ASIM |
 
-**AI/LLM — OWASP LLM Top 10 + MITRE ATLAS** (`llm_app`)
+**AI/LLM: OWASP LLM Top 10 + MITRE ATLAS** (`llm_app`)
 
 | Rule | OWASP · ATLAS | Backends |
 |------|---------------|----------|
@@ -139,7 +139,7 @@ Backends: **SPL** (Splunk), **XDR** (Defender KQL), **ASIM** (Sentinel KQL).
 | `llm_system_prompt_leak` | LLM07 · `AML.T0069.002` / `AML.T0057` | SPL · XDR |
 | `llm_token_cost_spike` | LLM10 · `AML.T0034` / `AML.T0029` | SPL · XDR |
 
-**Correlation — multi-event aggregation** (`event_count` / `value_count`, SPL)
+**Correlation: multi-event aggregation** (`event_count` / `value_count`, SPL)
 
 | Rule | OWASP · ATLAS | Signal |
 |------|---------------|--------|
@@ -155,13 +155,13 @@ Every rule carries a unique UUID `id`, `status`, `level`, `description`, `author
 through the Sysmon (SPL), Microsoft XDR, and Sentinel ASIM pipelines. The AI/LLM pack uses the
 synthetic `llm_app` logsource defined in [`docs/sigma-subset.md`](docs/sigma-subset.md); KQL targets
 a custom `LLMAppLogs_CL` table (no native ASIM table exists for it). Correlation rules convert to
-Splunk SPL — the Kusto backend does not implement Sigma correlations.
+Splunk SPL; the Kusto backend does not implement Sigma correlations.
 
 </details>
 
 ---
 
-## 🔁 Example output
+## Example output
 
 A single Sigma rule (`win_encoded_powershell`, ATT&CK **T1059.001 + T1027**) converts to both
 backends:
@@ -187,17 +187,17 @@ LLMAppLogs_CL
 
 ---
 
-## 🧠 AI/LLM threat model
+## AI/LLM threat model
 
-The AI/LLM pack maps log-observable risks on a fictional **LLM gateway** to public frameworks —
+The AI/LLM pack maps log-observable risks on a fictional **LLM gateway** to public frameworks:
 **OWASP Top 10 for LLM Applications** and **MITRE ATLAS**. Full narratives, technique IDs, and
 honest limitations are in **[`docs/threat-model.md`](docs/threat-model.md)**.
 
 ---
 
-## 🤖 Optional: local-first rule drafter
+## Optional: local-first rule drafter
 
-Draft a new rule from a plain-English sentence using a **local** LLM — then let a deterministic
+Draft a new rule from a plain-English sentence using a **local** LLM, then let a deterministic
 validator decide whether to keep it:
 
 ```bash
@@ -205,26 +205,27 @@ validator decide whether to keep it:
 uv run sigma-forge draft "detect base64-encoded PowerShell downloads" --out rules/classic/drafted.yml
 ```
 
-> **Guardrail:** the drafter pipes the model's YAML through **lint → convert (SPL + KQL) →
+> **Guardrail:** the drafter pipes the model's YAML through **lint, convert (SPL + KQL), and
 > fire-test**. A rule that fails any stage is rejected and **never written to disk**. The model is
-> local by default, and **CI/tests mock it entirely — zero network calls, zero API keys**.
+> local by default, and **CI/tests mock it entirely: zero network calls, zero API keys**.
 
 ---
 
-## ⚙️ How CI works
+## How CI works
 
-On every push and PR, across a **Python 3.11 + 3.12** matrix: `uv sync` → **ruff** + **mypy** →
-convert *all* rules to SPL + Defender/Sentinel KQL (fail on any conversion error) → **pytest**
-(lint, golden conversions, fire-tests) → upload the ATT&CK Navigator layer JSON as an artifact. A
-separate **gitleaks** job scans for secrets. You can also build a static coverage report locally
-with `sigma-forge coverage --site _site` (heatmap PNG + Navigator layer + an `index.html`).
+On every push and PR, across a **Python 3.11 + 3.12** matrix: `uv sync`, then **ruff** + **mypy**,
+then convert *all* rules to SPL + Defender/Sentinel KQL (fail on any conversion error), then
+**pytest** (lint, golden conversions, fire-tests), then upload the ATT&CK Navigator layer JSON as
+an artifact. A separate **gitleaks** job scans for secrets. You can also build a static coverage
+report locally with `sigma-forge coverage --site _site` (heatmap PNG + Navigator layer + an
+`index.html`).
 
 ---
 
 <a id="limitations--scope"></a>
 
 <details>
-<summary><b>⚠️ Limitations &amp; scope</b> — honest caveats (click to expand)</summary>
+<summary><b>Limitations &amp; scope</b>: honest caveats (click to expand)</summary>
 
 - **KQL for the custom LLM logsource.** The AttackIQ Kusto backend is built around Microsoft's
   native tables. sigma-forge targets a *custom* `LLMAppLogs_CL` Log Analytics table via the
@@ -234,34 +235,34 @@ with `sigma-forge coverage --site _site` (heatmap PNG + Navigator layer + an `in
   Splunk SPL; the AttackIQ Kusto backend raises `NotImplementedError` for correlations, so that
   target is skipped for correlation rules (documented, not silently dropped). The offline evaluator
   implements correlations with **sliding** `timespan` windows, while the emitted SPL uses Splunk's
-  **fixed `bin` buckets** — see [`docs/sigma-subset.md`](docs/sigma-subset.md) for the caveat.
+  **fixed `bin` buckets**; see [`docs/sigma-subset.md`](docs/sigma-subset.md) for the caveat.
 - **Evaluator subset.** The offline fire-test evaluator supports a documented subset
   (equals/contains/startswith/endswith/`re`/`null`/`all` + numeric compares + keywords). Constructs
   like `base64offset`, `cidr`, and `fieldref` convert to SPL/KQL fine but raise a clear error in the
   evaluator rather than guessing. See [`docs/sigma-subset.md`](docs/sigma-subset.md).
 - **Detections are starting points.** Phrase lists, regexes, and thresholds are illustrative and
-  authored from public sources — tune them per environment.
+  authored from public sources; tune them per environment.
 - **Synthetic everything.** All logs, fields, and identifiers are fictional and product-agnostic.
 
 </details>
 
 ---
 
-## 🤝 Contributing & security
+## Contributing & security
 
-Contributions are welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup and
+Contributions are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup and
 the rule-authoring workflow. To report a vulnerability privately, follow the
 [security policy](SECURITY.md).
 
 ---
 
-## 📜 License
+## License
 
-- **Code** — [MIT](LICENSE).
-- **Detection rules** (`rules/`) — [Detection Rule License (DRL) 1.1](rules/LICENSE), the same
+- **Code:** [MIT](LICENSE).
+- **Detection rules** (`rules/`): [Detection Rule License (DRL) 1.1](rules/LICENSE), the same
   permissive license SigmaHQ uses for community content.
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 Built on the work of [**SigmaHQ**](https://github.com/SigmaHQ/sigma) and
 [**pySigma**](https://github.com/SigmaHQ/pySigma), the
