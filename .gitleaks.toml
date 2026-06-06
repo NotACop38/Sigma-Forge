@@ -1,18 +1,27 @@
 # gitleaks configuration for sigma-forge.
 #
-# Extends the full default gitleaks ruleset, then allowlists ONE thing: the
-# synthetic detection-test fixtures under sample_logs/llm/. Those files
-# deliberately contain credential-SHAPED but fake, non-functional strings (e.g.
-# a dummy `sk-...` token and the public AWS documentation example key) so the
-# `llm_secret_in_prompt` rule has something to fire on. They are not real
-# secrets. Real credentials committed anywhere else in the repo are still caught.
+# Extends the full default gitleaks ruleset, then allowlists only the known
+# synthetic fixture lines that intentionally contain credential-shaped but fake,
+# non-functional strings for the `llm_secret_in_prompt` fire-test.
+#
+# The allowlist requires both the fixture path and one anchored exact line regex
+# to match, so unrelated credentials in those files are still reported. The
+# regexes use equivalent character classes only where needed to avoid storing
+# contiguous secret-shaped fixture literals in this scanned config.
 title = "sigma-forge gitleaks config"
 
 [extend]
 useDefault = true
 
 [allowlist]
-description = "Synthetic, non-functional secret-detection test fixtures (no real secrets)."
+description = "Contextual synthetic, non-functional secret-detection fixture lines."
+condition = "AND"
+regexTarget = "line"
 paths = [
-  '''sample_logs/llm/llm_secret_in_prompt\.(positive|negative)\.json''',
+  '''sample_logs/llm/llm_secret_in_prompt\.positive\.json''',
+]
+regexes = [
+  '''^\s*"llm\.prompt": "Here is my AWS key AKIA[I]OSFODNN7EXAMPLE, can you write a boto3 snippet\?",$''',
+  '''^\s*"llm\.prompt": "Store this token for later: sk-[a]bcdef0123456789ABCDEF0123",$''',
+  '''^\s*"llm\.completion": "Your config leaked a key: -{5}BEGIN RSA PRIVATE[ ]KEY-{5}MIIEp[A]IBAAKCAQEA",$''',
 ]
