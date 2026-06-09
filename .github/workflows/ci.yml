@@ -54,6 +54,10 @@ jobs:
         if: matrix.python-version == '3.11'
         run: uv run sigma-forge coverage --layer docs/attack-layer.json --png docs/images/attack-layer.png
 
+      - name: Fail if the committed Navigator layer is stale
+        if: matrix.python-version == '3.11'
+        run: git diff --exit-code -- docs/attack-layer.json
+
       - name: Upload ATT&CK Navigator layer artifact
         if: matrix.python-version == '3.11'
         uses: actions/upload-artifact@v4

@@ -2,7 +2,6 @@
 # Everything runs through `uv` so a clean clone needs no manual venv steps.
 .DEFAULT_GOAL := help
 RUN := uv run
-RULES := rules/classic rules/llm
 
 .PHONY: help install lint typecheck convert evaluate coverage test golden draft clean
 
@@ -31,8 +30,9 @@ coverage: ## Emit the ATT&CK Navigator layer JSON + render the heatmap PNG
 golden: ## Regenerate golden SPL/KQL conversion snapshots
 	$(RUN) python -m tests.regen_golden
 
-test: ## Run the full test suite (lint, convert, evaluate)
+test: ## Run the full test suite (lint, typecheck, convert, evaluate) — same gates as CI
 	$(RUN) ruff check src tests
+	$(RUN) mypy
 	$(RUN) pytest
 
 draft: ## Draft a rule from a threat sentence via a LOCAL LLM (needs a running endpoint)

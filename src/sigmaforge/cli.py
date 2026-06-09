@@ -33,6 +33,14 @@ def _version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
+def _discover_rules(rule_paths: list[Path] | None) -> list[Path]:
+    try:
+        return convert_mod.iter_rule_files(rule_paths)
+    except convert_mod.ConversionError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+
+
 @app.callback()
 def main(
     _version: bool = typer.Option(
@@ -60,7 +68,7 @@ def convert(
         raise typer.Exit(code=2)
 
     rule_paths = None if (all_rules or not paths) else list(paths)
-    files = convert_mod.iter_rule_files(rule_paths)
+    files = _discover_rules(rule_paths)
     if not files:
         console.print("[yellow]No rules found.[/yellow]")
         raise typer.Exit()
@@ -103,7 +111,7 @@ def evaluate(
     """Fire-test rules: positive sample logs must match, negatives must not."""
     evaluate_mod = _lazy_evaluate()
     rule_paths = None if (all_rules or not paths) else list(paths)
-    files = convert_mod.iter_rule_files(rule_paths)
+    files = _discover_rules(rule_paths)
 
     table = Table(title="Fire-test results")
     table.add_column("Rule", style="cyan")

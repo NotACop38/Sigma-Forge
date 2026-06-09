@@ -17,6 +17,9 @@ env/
 .env.*
 !.env.example
 
+# Generated coverage site (sigma-forge coverage --site)
+_site/
+
 # Tooling / OS
 .DS_Store
 *.log

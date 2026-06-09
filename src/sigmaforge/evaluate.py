@@ -24,6 +24,7 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import datetime
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -73,8 +74,13 @@ def _resolve_field(event: dict[str, Any], field: str) -> tuple[bool, Any]:
 
 def _sigmastring_to_regex(value: SigmaString) -> re.Pattern[str]:
     """Build an anchored, case-insensitive regex from a SigmaString's parts."""
+    return _regex_from_parts(tuple(value.s))
+
+
+@cache
+def _regex_from_parts(parts: tuple[Any, ...]) -> re.Pattern[str]:
     out = ["^"]
-    for part in value.s:
+    for part in parts:
         if part is SpecialChars.WILDCARD_MULTI:
             out.append(".*")
         elif part is SpecialChars.WILDCARD_SINGLE:
@@ -178,7 +184,11 @@ def load_collection(path: Path) -> SigmaCollection:
 
 
 def load_rule(path: Path) -> SigmaRule:
-    rule = load_collection(path).rules[0]
+    return _first_plain_rule(load_collection(path), path)
+
+
+def _first_plain_rule(collection: SigmaCollection, path: Path) -> SigmaRule:
+    rule = collection.rules[0]
     if not isinstance(rule, SigmaRule):
         raise UnsupportedFeatureError(
             f"{path} is not a plain Sigma rule (use correlation_triggers for correlations)"
@@ -310,11 +320,6 @@ def _load_events(path: Path) -> list[dict[str, Any]]:
     return data if isinstance(data, list) else [data]
 
 
-def _is_correlation(path: Path) -> bool:
-    collection = load_collection(path)
-    return any(isinstance(r, SigmaCorrelationRule) for r in collection.rules)
-
-
 def fire_test(rule_path: Path) -> FireTestReport:
     rule_path = Path(rule_path)
     report = FireTestReport(name=rule_path.stem)
@@ -325,17 +330,17 @@ def fire_test(rule_path: Path) -> FireTestReport:
         report.skipped = True
         return report
 
-    if _is_correlation(rule_path):
+    collection = load_collection(rule_path)
+    if any(isinstance(r, SigmaCorrelationRule) for r in collection.rules):
         # Each fixture file is ONE scenario: the positive set must trigger the
         # correlation, the negative set must not.
-        collection = load_collection(rule_path)
         report.positives_total = 1
         report.positives_matched = 1 if correlation_triggers(collection, positives) else 0
         report.negatives_total = 1
         report.negatives_clean = 0 if correlation_triggers(collection, negatives) else 1
         return report
 
-    rule = load_rule(rule_path)
+    rule = _first_plain_rule(collection, rule_path)
     report.positives_total = len(positives)
     report.positives_matched = sum(1 for e in positives if matches(rule, e))
     report.negatives_total = len(negatives)
