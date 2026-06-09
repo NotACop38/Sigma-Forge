@@ -73,6 +73,9 @@ def _check_attack_tags(rule: SigmaRule | SigmaCorrelationRule) -> list[str]:
 
 
 def _curated_validator() -> SigmaValidator:
+    # Built fresh per call on purpose: SigmaValidator instances carry cross-run
+    # state (e.g. duplicate-id/title tracking), so a cached one reports false
+    # duplicates when linting several rules in a row.
     selected = {
         cls for ident, cls in _CORE_VALIDATORS.items() if ident not in _EXCLUDED_VALIDATORS
     }

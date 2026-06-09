@@ -70,8 +70,10 @@ either event shape.
 
 ## Not supported (raises a clear error)
 `base64` / `base64offset` expansion, `cidr`, `fieldref`, `|expand`, placeholder
-(`%var%`) expansion, and correlation rules. These convert fine to SPL/KQL via the
-backends, but the offline evaluator refuses to guess at them.
+(`%var%`) expansion, and correlation types other than `event_count` /
+`value_count` (`temporal*`, `value_sum/avg/percentile/median`). These convert
+fine to SPL/KQL via the backends, but the offline evaluator refuses to guess at
+them.
 
 ---
 

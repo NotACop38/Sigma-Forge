@@ -221,8 +221,9 @@ def iter_rule_files(paths: list[Path] | None = None) -> list[Path]:
     for f in files:
         try:
             docs = _docs(f)
-        except yaml.YAMLError:
-            continue
+        except yaml.YAMLError as exc:
+            # A broken rule must fail loudly, not silently drop out of lint/convert/fire-test.
+            raise ConversionError(f"{f} is not valid YAML: {exc}") from exc
         if any("detection" in d or "correlation" in d for d in docs):
             rules.append(f)
     return rules

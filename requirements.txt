@@ -50,3 +50,12 @@ typing-extensions==4.15.0
 typing-inspection==0.4.2
 urllib3==2.7.0
 wcwidth==0.7.0
+
+# Dev tooling (so the pip fallback in the README can run `make test` / CI gates).
+iniconfig==2.3.0
+mypy==2.1.0
+mypy-extensions==1.1.0
+pathspec==1.1.1
+pluggy==1.6.0
+pytest==9.0.3
+ruff==0.15.15
