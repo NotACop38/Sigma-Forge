@@ -189,14 +189,14 @@ def validate_rule_yaml(rule_yaml: str) -> DraftResult:
 
     # 3) fire-test (subset-evaluable + synthesized positive must fire)
     condition = rule.detection.parsed_condition[0].parse()
-    synth_event, guaranteed = _synthesize(condition)
+    synth_event, _ = _synthesize(condition)
     try:
         fired = evaluate_mod.matches(rule, synth_event)
         empty_fired = evaluate_mod.matches(rule, {})
     except evaluate_mod.UnsupportedFeatureError as exc:
         result.errors.append(("fire-test", f"rule uses an unsupported construct: {exc}"))
         return result
-    if guaranteed and not fired:
+    if not fired:
         result.errors.append(("fire-test", "synthesized positive event did not fire the rule"))
         return result
     if empty_fired:

@@ -155,3 +155,76 @@ def test_rejects_or_rule_with_overbroad_not_branch(tmp_path):
     assert not result.accepted
     assert ("fire-test", "rule matches an empty event") in result.errors
     assert not out.exists()
+
+NOT_NULL_RULE = """```yaml
+title: NOT Null Rule
+id: 7c9e6679-7425-40de-944b-e07fc1f90ab2
+status: experimental
+description: Matches nearly every event with a non-null prompt.
+author: unit-test
+level: low
+logsource:
+  product: llm_app
+  category: gateway
+detection:
+  filter:
+    llm.prompt: null
+  condition: not filter
+```"""
+
+SELF_CONTRADICTORY_NOT_RULE = """```yaml
+title: Self Contradictory NOT Rule
+id: 7c9e6679-7425-40de-944b-e07fc1f90ab3
+status: experimental
+description: Can never fire because the same selection is required and excluded.
+author: unit-test
+level: low
+logsource:
+  product: llm_app
+  category: gateway
+detection:
+  selection:
+    llm.prompt|contains: 'ignore previous instructions'
+  condition: selection and not selection
+```"""
+
+SELECTION_WITH_NOT_FILTER_RULE = """```yaml
+title: Selection With NOT Filter Rule
+id: 7c9e6679-7425-40de-944b-e07fc1f90ab4
+status: experimental
+description: Valid high-signal selection with a benign exclusion.
+author: unit-test
+level: high
+logsource:
+  product: llm_app
+  category: gateway
+detection:
+  selection:
+    llm.prompt|contains: 'ignore previous instructions'
+  filter:
+    user.id: 'service-account'
+  condition: selection and not filter
+```"""
+
+
+def test_rejects_not_null_rule_even_when_empty_event_does_not_match(tmp_path):
+    out = tmp_path / "not-null.yml"
+    result = draft.draft_rule("not null", completion_fn=_fixed(NOT_NULL_RULE), write_path=out)
+    assert not result.accepted
+    assert ("fire-test", "synthesized positive event did not fire the rule") in result.errors
+    assert not out.exists()
+
+
+def test_rejects_self_contradictory_not_rule(tmp_path):
+    out = tmp_path / "contradictory.yml"
+    result = draft.draft_rule(
+        "self contradictory", completion_fn=_fixed(SELF_CONTRADICTORY_NOT_RULE), write_path=out
+    )
+    assert not result.accepted
+    assert ("fire-test", "synthesized positive event did not fire the rule") in result.errors
+    assert not out.exists()
+
+
+def test_accepts_selection_with_not_filter_rule():
+    result = draft.draft_rule("selection not filter", completion_fn=_fixed(SELECTION_WITH_NOT_FILTER_RULE))
+    assert result.accepted, result.errors
