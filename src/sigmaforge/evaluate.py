@@ -21,6 +21,7 @@ raises :class:`UnsupportedFeatureError` with a clear message rather than guessin
 from __future__ import annotations
 
 import json
+import multiprocessing as mp
 import re
 from collections import Counter
 from dataclasses import dataclass
@@ -54,6 +55,56 @@ from .convert import REPO_ROOT, iter_rule_files
 
 class UnsupportedFeatureError(NotImplementedError):
     """Raised when a rule uses a construct the evaluator deliberately does not support."""
+
+
+REGEX_TIMEOUT_SECONDS = 0.25
+
+
+def _regex_search_worker(pattern: str, target: str, conn: Any) -> None:
+    """Run a rule-controlled regex in a disposable child process."""
+    try:
+        conn.send(("ok", re.search(pattern, target) is not None))
+    except re.error as exc:
+        conn.send(("error", str(exc)))
+    finally:
+        conn.close()
+
+
+def _safe_regex_search(pattern: str, target: str) -> bool:
+    """Evaluate untrusted Sigma regexes with a hard timeout."""
+    ctx = mp.get_context("fork") if "fork" in mp.get_all_start_methods() else mp.get_context()
+    parent_conn, child_conn = ctx.Pipe(duplex=False)
+    proc = ctx.Process(target=_regex_search_worker, args=(pattern, target, child_conn))
+    proc.daemon = True
+    proc.start()
+    child_conn.close()
+    proc.join(REGEX_TIMEOUT_SECONDS)
+
+    if proc.is_alive():
+        proc.terminate()
+        proc.join()
+        parent_conn.close()
+        raise UnsupportedFeatureError(
+            f"regular expression evaluation timed out after {REGEX_TIMEOUT_SECONDS:.2f}s"
+        )
+
+    if not parent_conn.poll():
+        parent_conn.close()
+        raise UnsupportedFeatureError("regular expression evaluation failed")
+
+    status, payload = parent_conn.recv()
+    parent_conn.close()
+    if status == "error":
+        raise UnsupportedFeatureError(f"invalid regular expression: {payload}")
+    return bool(payload)
+
+
+def _sigma_regex_to_plain(value: SigmaRegularExpression) -> str:
+    regexp = value.regexp
+    to_plain = getattr(regexp, "to_plain", None)
+    if callable(to_plain):
+        return str(to_plain())
+    return str(regexp)
 
 
 # --- field resolution -----------------------------------------------------
@@ -114,7 +165,7 @@ def _match_value(event_value: Any, sigma_value: Any) -> bool:
     if isinstance(sigma_value, SigmaRegularExpression):
         if event_value is None:
             return False
-        return re.search(str(sigma_value.regexp), str(event_value)) is not None
+        return _safe_regex_search(_sigma_regex_to_plain(sigma_value), str(event_value))
 
     if isinstance(sigma_value, SigmaNumber):
         try:

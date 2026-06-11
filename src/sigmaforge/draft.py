@@ -122,9 +122,9 @@ def _synthesize(node: Any) -> tuple[dict[str, Any], bool]:
             best = best or (sub, False)
         return best or ({}, False)
     if isinstance(node, ConditionNOT):
-        # Absence may satisfy NOT filters in common "sel and not filter" rules,
-        # but a NOT branch alone is not a guaranteed high-signal positive event.
-        return {}, False
+        # Absence is the intended candidate for NOT filters. The later fire-test
+        # proves whether that candidate really satisfies the full condition.
+        return {}, True
     if isinstance(node, ConditionValueExpression):
         if isinstance(node.value, SigmaString):
             return {"_keyword": _literal(node.value)}, True
