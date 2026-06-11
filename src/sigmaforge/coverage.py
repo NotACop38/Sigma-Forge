@@ -30,6 +30,11 @@ from .evaluate import load_collection  # noqa: E402
 
 _TECHNIQUE_RE = re.compile(r"^t\d{4}(\.\d{3})?$", re.IGNORECASE)
 _ATLAS_RE = re.compile(r"^t\d{4}(\.\d{3})?$", re.IGNORECASE)
+# Defensive bound for contributor-controlled ATT&CK tags. The Enterprise
+# ATT&CK matrix is much smaller than this, and sigma-forge currently covers a
+# handful of techniques, so exceeding it indicates malformed or hostile input.
+_MAX_ATTACK_TECHNIQUES = 200
+
 
 # ATT&CK tactic Sigma-tag shortname (hyphenated) -> (display name, matrix order).
 _TACTICS = {
@@ -69,6 +74,16 @@ class CoverageData:
         return max((len(v) for v in self.technique_rules.values()), default=1)
 
 
+def _ensure_attack_technique_limit(data: CoverageData, rule_path: Path) -> None:
+    if data.attack_technique_count <= _MAX_ATTACK_TECHNIQUES:
+        return
+    raise ValueError(
+        "Refusing to render ATT&CK coverage with "
+        f"{data.attack_technique_count} unique techniques after reading {rule_path}. "
+        f"The safety limit is {_MAX_ATTACK_TECHNIQUES}; check rule tags for invalid or hostile IDs."
+    )
+
+
 def collect_coverage(paths: list[Path] | None = None) -> CoverageData:
     data = CoverageData()
     for rule_path in iter_rule_files(paths):
@@ -87,12 +102,14 @@ def collect_coverage(paths: list[Path] | None = None) -> CoverageData:
             for tech in techniques:
                 data.technique_rules[tech].append(title)
                 data.technique_tactics[tech].update(tactics)
+            _ensure_attack_technique_limit(data, rule_path)
     return data
 
 
 # --- Navigator layer ------------------------------------------------------
 
 def build_layer(data: CoverageData) -> dict:
+    _ensure_attack_technique_limit(data, Path("ATT&CK Navigator layer"))
     techniques = []
     for tech, rules in sorted(data.technique_rules.items()):
         techniques.append(
@@ -133,6 +150,7 @@ def render_heatmap(data: CoverageData, png_path: Path) -> None:
         order = min((_TACTICS[t][1] for t in tactics if t in _TACTICS), default=99)
         return (order, tech)
 
+    _ensure_attack_technique_limit(data, png_path)
     techs = sorted(data.technique_rules, key=sort_key)
     counts = [len(data.technique_rules[t]) for t in techs]
     labels = []

@@ -18,6 +18,35 @@ def test_collects_real_attack_techniques():
         assert _TECH.match(tech), f"{tech} is not a valid ATT&CK technique ID"
 
 
+def test_collect_coverage_rejects_excessive_attack_techniques(tmp_path):
+    tags = "\n".join(f"  - attack.t{i:04d}" for i in range(cov._MAX_ATTACK_TECHNIQUES + 1))
+    rule = tmp_path / "too_many_tags.yml"
+    rule.write_text(
+        f"""title: Excessive ATTACK Tags
+id: 49f60f5d-7ba7-4ad0-b239-41e75c2dcb4e
+status: experimental
+description: Synthetic rule used to verify coverage input limits.
+author: sigma-forge
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection:
+    Image|endswith: '\\cmd.exe'
+  condition: selection
+falsepositives:
+  - Synthetic test fixture.
+level: low
+tags:
+{tags}
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="safety limit"):
+        cov.collect_coverage([rule])
+
+
 def test_layer_is_valid_navigator_v4():
     layer = cov.build_layer(cov.collect_coverage())
     assert layer["domain"] == "enterprise-attack"
