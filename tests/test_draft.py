@@ -106,3 +106,52 @@ def test_rejected_rule_not_written(tmp_path):
     out = tmp_path / "should_not_exist.yml"
     draft.draft_rule("bad", completion_fn=_fixed(UNSUPPORTED_RULE), write_path=out)
     assert not out.exists()
+
+
+OVERBROAD_NOT_RULE = """```yaml
+title: Overbroad NOT Rule
+id: 7c9e6679-7425-40de-944b-e07fc1f90ab0
+status: experimental
+description: Matches nearly every event because only a missing benign marker is excluded.
+author: unit-test
+level: low
+logsource:
+  product: llm_app
+  category: gateway
+detection:
+  filter:
+    llm.prompt|contains: 'benign-marker-never-present'
+  condition: not filter
+```"""
+
+OVERBROAD_OR_NOT_RULE = """```yaml
+title: Overbroad OR NOT Rule
+id: 7c9e6679-7425-40de-944b-e07fc1f90ab1
+status: experimental
+description: Has a valid selection but also an overbroad NOT branch.
+author: unit-test
+level: low
+logsource:
+  product: llm_app
+  category: gateway
+detection:
+  selection:
+    llm.prompt|contains: 'ignore previous instructions'
+  filter:
+    llm.prompt|contains: 'benign-marker-never-present'
+  condition: selection or not filter
+```"""
+
+
+def test_rejects_rule_that_matches_empty_event():
+    result = draft.draft_rule("overbroad", completion_fn=_fixed(OVERBROAD_NOT_RULE))
+    assert not result.accepted
+    assert ("fire-test", "rule matches an empty event") in result.errors
+
+
+def test_rejects_or_rule_with_overbroad_not_branch(tmp_path):
+    out = tmp_path / "overbroad.yml"
+    result = draft.draft_rule("overbroad", completion_fn=_fixed(OVERBROAD_OR_NOT_RULE), write_path=out)
+    assert not result.accepted
+    assert ("fire-test", "rule matches an empty event") in result.errors
+    assert not out.exists()

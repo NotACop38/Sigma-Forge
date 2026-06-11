@@ -16,6 +16,9 @@ Two layers:
      ``stealth``), so it produces false positives on canonical tactic tags.
      We replace it with :func:`_check_attack_tags`, which validates technique
      IDs by format and tactics against the canonical enterprise ATT&CK set.
+   * ``d3_fendtag`` — recent pySigma versions lazily fetch MITRE D3FEND tag
+     data over HTTPS. Tests and CI must be deterministic and network-free, and
+     sigma-forge does not author D3FEND tags.
 """
 
 from __future__ import annotations
@@ -32,7 +35,7 @@ from sigma.validation import SigmaValidator
 from sigma.validators.core import validators as _CORE_VALIDATORS
 
 # Validator identifiers we deliberately skip (replaced by our own checks below).
-_EXCLUDED_VALIDATORS = {"namespace_tag", "attacktag"}
+_EXCLUDED_VALIDATORS = {"namespace_tag", "attacktag", "d3_fendtag"}
 
 _REQUIRED = ("title", "status", "level")
 

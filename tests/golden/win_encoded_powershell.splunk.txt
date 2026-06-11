@@ -1,1 +1,1 @@
-EventID=1 Image IN ("*\\powershell.exe", "*\\pwsh.exe") CommandLine IN ("* -enc *", "* -EncodedCommand *", "* -ec *", "*FromBase64String*")
+EventID=1 Image IN ("*\\powershell.exe", "*\\pwsh.exe") CommandLine IN ("* -enc *", "* -EncodedCommand *", "* -ec *", "* -e *", "*FromBase64String*")

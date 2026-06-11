@@ -25,7 +25,7 @@ detection:
       - 'send_email'
       - 'http_request'
   selection_target:
-    tool.target_host|re: '(\.internal\b|\.local\b|^10\.|^192\.168\.|^169\.254\.169\.254$)'
+    tool.target_host|re: '(?i)(\.internal\b|\.local\b|^10\.|^172\.(1[6-9]|2[0-9]|3[0-1])\.|^192\.168\.|^169\.254\.169\.254$)'
   condition: selection_tool and selection_target
 falsepositives:
   - Sanctioned automations that legitimately call internal tools; allowlist them.

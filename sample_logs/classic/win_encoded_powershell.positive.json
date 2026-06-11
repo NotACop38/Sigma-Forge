@@ -16,5 +16,11 @@
     "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
     "CommandLine": "powershell -Command [System.Convert]::FromBase64String('aGVsbG8=')",
     "ParentImage": "C:\\Windows\\System32\\services.exe"
+  },
+  {
+    "EventID": 1,
+    "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    "CommandLine": "powershell.exe -nop -w hidden -e SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQA",
+    "ParentImage": "C:\\Windows\\System32\\cmd.exe"
   }
 ]

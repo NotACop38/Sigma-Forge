@@ -1,2 +1,2 @@
 tool_name IN ("shell_exec", "run_command", "delete_file", "send_email", "http_request")
-| regex tool_target_host="(\\.internal\\b|\\.local\\b|^10\\.|^192\\.168\\.|^169\\.254\\.169\\.254$)"
+| regex tool_target_host="(?i)(\\.internal\\b|\\.local\\b|^10\\.|^172\\.(1[6-9]|2[0-9]|3[0-1])\\.|^192\\.168\\.|^169\\.254\\.169\\.254$)"
