@@ -48,8 +48,50 @@ detection:
     SourceIp|cidr: '10.0.0.0/8'
   condition: sel
 """
-    from sigma.collection import SigmaCollection
-
-    parsed = SigmaCollection.from_yaml(rule_yaml).rules[0]
+    parsed = _rule_from_yaml(rule_yaml)
     with pytest.raises(ev.UnsupportedFeatureError):
         ev.matches(parsed, {"SourceIp": "10.1.2.3"})
+
+
+def _rule_from_yaml(rule_yaml: str):
+    from sigma.collection import SigmaCollection
+
+    return SigmaCollection.from_yaml(rule_yaml).rules[0]
+
+
+def test_regex_detection_uses_plain_pattern():
+    """Sigma |re values should still work for normal bounded expressions."""
+    rule_yaml = """
+title: Regex Detection
+id: 00000000-0000-0000-0000-000000000101
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  sel:
+    Message|re: '^hello-[0-9]+$'
+  condition: sel
+"""
+    parsed = _rule_from_yaml(rule_yaml)
+
+    assert ev.matches(parsed, {"Message": "hello-123"})
+    assert not ev.matches(parsed, {"Message": "hello-world"})
+
+
+def test_regex_detection_times_out_catastrophic_backtracking():
+    """Rule-controlled regexes should fail closed instead of hanging CI."""
+    rule_yaml = """
+title: Regex Timeout
+id: 00000000-0000-0000-0000-000000000102
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  sel:
+    Message|re: '^(a+)+$'
+  condition: sel
+"""
+    parsed = _rule_from_yaml(rule_yaml)
+
+    with pytest.raises(ev.UnsupportedFeatureError, match="regular expression evaluation timed out"):
+        ev.matches(parsed, {"Message": "a" * 128 + "!"})
