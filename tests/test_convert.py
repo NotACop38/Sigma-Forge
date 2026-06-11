@@ -33,6 +33,45 @@ def test_cli_rejects_unknown_target():
     assert "Unknown target" in result.output
 
 
+def test_rule_discovery_includes_yaml_and_unparseable_files(tmp_path: Path):
+    valid_yml = tmp_path / "valid_rule.yml"
+    valid_yaml = tmp_path / "valid_rule.yaml"
+    malformed_yml = tmp_path / "malformed_rule.yml"
+
+    valid_rule = """
+title: Test Rule
+id: 11111111-1111-1111-1111-111111111111
+status: test
+logsource:
+  category: process_creation
+detection:
+  selection:
+    Image: cmd.exe
+  condition: selection
+""".strip()
+    valid_yml.write_text(valid_rule, encoding="utf-8")
+    valid_yaml.write_text(valid_rule, encoding="utf-8")
+    malformed_yml.write_text("title: [unterminated\n", encoding="utf-8")
+
+    discovered = {p.name for p in convert_mod.iter_rule_files([tmp_path])}
+
+    assert discovered == {valid_yml.name, valid_yaml.name, malformed_yml.name}
+
+
+def test_convert_check_fails_on_unparseable_rule(tmp_path: Path):
+    from typer.testing import CliRunner
+
+    from sigmaforge.cli import app
+
+    malformed_yml = tmp_path / "malformed_rule.yml"
+    malformed_yml.write_text("title: [unterminated\n", encoding="utf-8")
+
+    result = CliRunner().invoke(app, ["convert", str(tmp_path), "--check", "--target", "splunk"])
+
+    assert result.exit_code == 1, result.output
+    assert "1 rule(s) failed to convert" in result.output
+
+
 @pytest.mark.parametrize(("rule_path", "target"), CASES, ids=CASE_IDS)
 def test_converts_for_target(rule_path: Path, target: str):
     conv = convert_mod.convert_file(rule_path)

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
 from sigma.collection import SigmaCollection
 
+from sigmaforge import evaluate as ev
 from sigmaforge.evaluate import correlation_triggers
 
 EVENT_COUNT = """
@@ -128,13 +130,45 @@ def test_correlation_only_counts_referenced_base_rule():
 def test_value_count_distinct_hosts():
     coll = SigmaCollection.from_yaml(VALUE_COUNT)
     events = [
-        _ev("2026-06-03T10:00:00Z", **{"user.id": "u1", "tool.name": "http_request", "tool.target_host": f"10.0.0.{i}"})
+        _ev(
+            "2026-06-03T10:00:00Z",
+            **{"user.id": "u1", "tool.name": "http_request", "tool.target_host": f"10.0.0.{i}"},
+        )
         for i in range(3)
     ]
     assert correlation_triggers(coll, events) is True
     # Same host repeated -> only 1 distinct value -> no trigger.
     same = [
-        _ev("2026-06-03T10:00:00Z", **{"user.id": "u1", "tool.name": "http_request", "tool.target_host": "10.0.0.1"})
+        _ev(
+            "2026-06-03T10:00:00Z",
+            **{"user.id": "u1", "tool.name": "http_request", "tool.target_host": "10.0.0.1"},
+        )
         for _ in range(5)
     ]
     assert correlation_triggers(coll, same) is False
+
+
+def test_large_unreachable_value_count_uses_bounded_windowing():
+    coll = SigmaCollection.from_yaml(VALUE_COUNT.replace("gte: 3", "gte: 1000000"))
+    events = [
+        _ev(
+            "2026-06-03T10:00:00Z",
+            **{
+                "user.id": "u1",
+                "tool.name": "http_request",
+                "tool.target_host": f"10.0.0.{i}",
+            },
+        )
+        for i in range(1_000)
+    ]
+    assert correlation_triggers(coll, events) is False
+
+
+def test_correlation_rejects_oversized_groups():
+    coll = SigmaCollection.from_yaml(EVENT_COUNT.replace("gte: 3", "gte: 1000000"))
+    events = [
+        _ev("2026-06-03T10:00:00Z", **{"user.id": "u1", "llm.prompt": "x"})
+        for _ in range(ev.MAX_CORRELATION_GROUP_EVENTS + 1)
+    ]
+    with pytest.raises(ev.UnsupportedFeatureError, match="maximum supported group size"):
+        correlation_triggers(coll, events)

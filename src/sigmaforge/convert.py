@@ -68,6 +68,7 @@ TARGETS: dict[str, Target] = {
 TARGET_IDS = tuple(TARGETS)
 # Backwards-compatible labels mapping used by the CLI.
 TARGET_LABELS = {t.id: t.label for t in TARGETS.values()}
+YAML_SUFFIXES = {".yml", ".yaml"}
 
 
 class ConversionError(RuntimeError):
@@ -181,24 +182,29 @@ def _backend(target_id: str, pkind: str):
 
 def convert_text(rule_yaml: str, target: str, kind: str = CLASSIC) -> str:
     """Convert a rule document (possibly multi-doc) to one query string for ``target``."""
-    collection = SigmaCollection.from_yaml(rule_yaml)
-    backend = _backend(target, _pipeline_kind(kind, rule_yaml))
     try:
+        collection = SigmaCollection.from_yaml(rule_yaml)
+        backend = _backend(target, _pipeline_kind(kind, rule_yaml))
         queries = backend.convert(collection)
     except Exception as exc:  # pragma: no cover - surfaced as ConversionError
-        raise ConversionError(f"{target} backend failed: {exc}") from exc
+        raise ConversionError(f"{target} conversion failed: {exc}") from exc
     return "\n\n".join(str(q) for q in queries).strip()
 
 
 def convert_file(path: Path) -> RuleConversion:
     """Convert one rule file to every applicable target."""
     path = Path(path)
-    kind = rule_kind(path)
-    text = path.read_text(encoding="utf-8")
-    queries: dict[str, str] = {}
-    for tid, target in TARGETS.items():
-        if target.applies(kind):
-            queries[tid] = convert_text(text, tid, kind)
+    try:
+        kind = rule_kind(path)
+        text = path.read_text(encoding="utf-8")
+        queries: dict[str, str] = {}
+        for tid, target in TARGETS.items():
+            if target.applies(kind):
+                queries[tid] = convert_text(text, tid, kind)
+    except ConversionError:
+        raise
+    except Exception as exc:
+        raise ConversionError(f"{path}: failed to load rule: {exc}") from exc
     return RuleConversion(name=path.stem, path=path, kind=kind, queries=queries)
 
 
@@ -207,26 +213,23 @@ def targets_for(kind: str) -> list[str]:
 
 
 def iter_rule_files(paths: list[Path] | None = None) -> list[Path]:
-    """Return all rule files (single- or multi-doc) under the given paths (default: rules/)."""
+    """Return all YAML rule candidates under the given paths (default: rules/).
+
+    Discovery is intentionally syntax-agnostic: malformed YAML and unsupported
+    Sigma documents must be returned so conversion/lint CI gates can fail on
+    them instead of silently omitting unvalidated rule files.
+    """
     if not paths:
         paths = [RULES_ROOT]
-    files: list[Path] = []
+    files: set[Path] = set()
     for p in paths:
         p = Path(p)
         if p.is_dir():
-            files.extend(sorted(p.rglob("*.yml")))
-        elif p.suffix in {".yml", ".yaml"}:
-            files.append(p)
-    rules = []
-    for f in files:
-        try:
-            docs = _docs(f)
-        except yaml.YAMLError as exc:
-            # A broken rule must fail loudly, not silently drop out of lint/convert/fire-test.
-            raise ConversionError(f"{f} is not valid YAML: {exc}") from exc
-        if any("detection" in d or "correlation" in d for d in docs):
-            rules.append(f)
-    return rules
+            for suffix in YAML_SUFFIXES:
+                files.update(p.rglob(f"*{suffix}"))
+        elif p.suffix in YAML_SUFFIXES:
+            files.add(p)
+    return sorted(files)
 
 
 def convert_all(paths: list[Path] | None = None) -> list[RuleConversion]:

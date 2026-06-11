@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -246,10 +247,24 @@ _SITE_HTML = """<!doctype html>
 """
 
 
+def _reset_generated_dir(path: Path) -> None:
+    """Remove any pre-existing output path before writing generated artifacts.
+
+    GitHub Pages uploads the complete site directory. Cleaning it first prevents
+    stale committed files from being published, and unlinking symlinks prevents
+    writes/uploads from following a crafted checkout entry to another directory.
+    """
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+    elif path.exists():
+        shutil.rmtree(path)
+    path.mkdir(parents=True, exist_ok=False)
+
+
 def build_site(site_dir: Path, paths: list[Path] | None = None) -> CoverageSummary:
     """Build a self-contained static coverage site (index.html + heatmap PNG + layer JSON)."""
     site_dir = Path(site_dir)
-    site_dir.mkdir(parents=True, exist_ok=True)
+    _reset_generated_dir(site_dir)
     summary = build_coverage(
         layer_path=site_dir / "attack-layer.json",
         png_path=site_dir / "attack-layer.png",
