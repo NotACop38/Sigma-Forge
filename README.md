@@ -78,7 +78,8 @@ flowchart LR
 ```bash
 # 1. Clone and install (uv handles the venv + sigma backends/pipelines)
 git clone https://github.com/NotACop38/Sigma-Forge.git && cd Sigma-Forge
-uv sync                                   # or: python -m venv .venv && pip install -r requirements.txt
+uv sync   # no uv? python -m venv .venv && . .venv/bin/activate && pip install -e . -r requirements.txt
+          # (with the pip fallback, drop the `uv run` prefix below; make targets assume uv)
 
 # 2. Convert every rule to Splunk SPL + Sentinel KQL
 uv run sigma-forge convert --all
@@ -168,15 +169,16 @@ backends:
 
 **Splunk SPL** (Sysmon pipeline)
 ```spl
-EventID=1 Image IN ("*\\powershell.exe", "*\\pwsh.exe") CommandLine IN ("* -enc *", "* -EncodedCommand *", "* -ec *", "*FromBase64String*")
+EventID=1 Image IN ("*\\powershell.exe", "*\\pwsh.exe") CommandLine IN ("* -enc *", "* -EncodedCommand *", "* -ec *", "* -e *", "*FromBase64String*")
 ```
 
-**Microsoft Sentinel/Defender KQL** (Microsoft XDR pipeline)
+**Microsoft Sentinel/Defender KQL** (Microsoft XDR pipeline, wrapped for readability)
 ```kql
 DeviceProcessEvents
 | where (FolderPath endswith "\\powershell.exe" or FolderPath endswith "\\pwsh.exe")
     and (ProcessCommandLine contains " -enc " or ProcessCommandLine contains " -EncodedCommand "
-         or ProcessCommandLine contains " -ec " or ProcessCommandLine contains "FromBase64String")
+         or ProcessCommandLine contains " -ec " or ProcessCommandLine contains " -e "
+         or ProcessCommandLine contains "FromBase64String")
 ```
 
 And an AI/LLM rule (`llm_token_cost_spike`) compiles against the custom `LLMAppLogs_CL` table:

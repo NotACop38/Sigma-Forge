@@ -90,6 +90,7 @@ class RuleConversion:
 
 # --- rule-kind classification --------------------------------------------
 
+
 def _docs(path: Path) -> list[dict]:
     return [d for d in yaml.safe_load_all(path.read_text(encoding="utf-8")) if isinstance(d, dict)]
 
@@ -101,14 +102,16 @@ def rule_kind(path: Path) -> str:
         return CORRELATION
     for d in docs:
         logsource = d.get("logsource", {}) or {}
-        if "llm" in (logsource.get("category") or "").lower() or "llm" in (
-            logsource.get("product") or ""
-        ).lower():
+        if (
+            "llm" in (logsource.get("category") or "").lower()
+            or "llm" in (logsource.get("product") or "").lower()
+        ):
             return LLM
     return CLASSIC
 
 
 # --- pipeline construction (cached) ---------------------------------------
+
 
 @cache
 def _llm_pipeline(target_id: str) -> ProcessingPipeline:
@@ -142,9 +145,10 @@ def _pipeline_kind(kind: str, rule_yaml: str) -> str:
             if not isinstance(d, dict):
                 continue
             ls = d.get("logsource", {}) or {}
-            if "llm" in (ls.get("category") or "").lower() or "llm" in (
-                ls.get("product") or ""
-            ).lower():
+            if (
+                "llm" in (ls.get("category") or "").lower()
+                or "llm" in (ls.get("product") or "").lower()
+            ):
                 return LLM
     return CLASSIC
 
@@ -179,6 +183,7 @@ def _backend(target_id: str, pkind: str):
 
 
 # --- conversion -----------------------------------------------------------
+
 
 def convert_text(rule_yaml: str, target: str, kind: str = CLASSIC) -> str:
     """Convert a rule document (possibly multi-doc) to one query string for ``target``."""

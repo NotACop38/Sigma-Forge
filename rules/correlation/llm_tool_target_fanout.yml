@@ -3,10 +3,14 @@ id: 29a3f77c-23d5-4167-8cc6-1dd3460dfe60
 name: llm_agent_tool_invocation
 status: experimental
 description: >
-  Base detection for the tool fan-out correlation: any LLM-agent tool
-  invocation that targets a host. Authored against the synthetic llm_app schema.
+  Base detection for the tool fan-out correlation: an LLM-agent request-style
+  tool invocation (tool.name ending in _request, e.g. http_request). Authored
+  against the synthetic llm_app schema.
 author: sigma-forge
 date: 2026-06-03
+references:
+  - https://owasp.org/www-project-top-10-for-large-language-model-applications/
+  - https://atlas.mitre.org/techniques/AML.T0053
 logsource:
   product: llm_app
   category: gateway
@@ -14,6 +18,8 @@ detection:
   selection:
     tool.name|endswith: '_request'
   condition: selection
+falsepositives:
+  - Routine single tool requests; the fan-out correlation, not this base event, carries the signal.
 level: informational
 tags:
   - attack.execution

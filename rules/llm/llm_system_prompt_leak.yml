@@ -31,7 +31,7 @@ falsepositives:
   - Assistants legitimately explaining their role at a high level.
 level: medium
 tags:
-  - attack.credential-access
+  - attack.discovery
   - owasp.llm07
   - atlas.t0069.002
   - atlas.t0057

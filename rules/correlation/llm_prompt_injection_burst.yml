@@ -8,6 +8,9 @@ description: >
   OWASP/ATLAS references against the synthetic llm_app schema.
 author: sigma-forge
 date: 2026-06-03
+references:
+  - https://owasp.org/www-project-top-10-for-large-language-model-applications/
+  - https://atlas.mitre.org/techniques/AML.T0051
 logsource:
   product: llm_app
   category: gateway
@@ -20,6 +23,8 @@ detection:
       - 'do anything now'
       - 'bypass your guidelines'
   condition: selection
+falsepositives:
+  - Benign content quoting or discussing injection phrases (e.g. security training material).
 level: informational
 tags:
   - attack.initial-access

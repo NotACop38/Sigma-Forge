@@ -68,6 +68,7 @@ def _fixed(text: str):
 
 def test_no_network(monkeypatch):
     """Guard: the real model client must never be invoked when a completion_fn is given."""
+
     def boom(_threat):
         raise AssertionError("network/model call should not happen")
 
@@ -151,7 +152,9 @@ def test_rejects_rule_that_matches_empty_event():
 
 def test_rejects_or_rule_with_overbroad_not_branch(tmp_path):
     out = tmp_path / "overbroad.yml"
-    result = draft.draft_rule("overbroad", completion_fn=_fixed(OVERBROAD_OR_NOT_RULE), write_path=out)
+    result = draft.draft_rule(
+        "overbroad", completion_fn=_fixed(OVERBROAD_OR_NOT_RULE), write_path=out
+    )
     assert not result.accepted
     assert ("fire-test", "rule matches an empty event") in result.errors
     assert not out.exists()
@@ -243,7 +246,9 @@ def test_rejects_self_contradictory_not_rule(tmp_path):
 
 
 def test_accepts_selection_with_not_filter_rule():
-    result = draft.draft_rule("selection not filter", completion_fn=_fixed(SELECTION_WITH_NOT_FILTER_RULE))
+    result = draft.draft_rule(
+        "selection not filter", completion_fn=_fixed(SELECTION_WITH_NOT_FILTER_RULE)
+    )
     assert result.accepted, result.errors
 
 

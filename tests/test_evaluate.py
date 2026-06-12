@@ -78,6 +78,16 @@ detection:
     assert not ev.matches(parsed, {"Message": "hello-world"})
 
 
+def test_oversized_fixture_rejected_before_parsing(tmp_path, monkeypatch):
+    """The byte cap must trip on file size alone, before json.loads sees the data."""
+    monkeypatch.setattr(ev, "MAX_FIXTURE_BYTES", 16, raising=True)
+    big = tmp_path / "big.positive.json"
+    big.write_text('[{"CommandLine": "x"}]', encoding="utf-8")
+
+    with pytest.raises(ev.UnsupportedFeatureError, match="maximum supported fixture size"):
+        ev._load_events(big)
+
+
 def test_regex_detection_times_out_catastrophic_backtracking(monkeypatch):
     """Rule-controlled regexes should fail closed instead of hanging CI."""
     monkeypatch.setattr(ev, "REGEX_TIMEOUT_SECONDS", 0.01, raising=False)

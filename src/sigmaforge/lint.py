@@ -5,8 +5,9 @@ Two layers:
 1. **Structural** — the rule must parse via pySigma and carry the metadata a
    production detection needs: a valid UUID ``id``, ``title``, ``status``,
    ``level``, a ``logsource`` and a ``detection`` block.
-2. **pySigma validators** — the curated core validator set is run. Two
-   validators are intentionally excluded and replaced with our own checks:
+2. **pySigma validators** — the curated core validator set is run. Three
+   validators are intentionally excluded (and, where needed, replaced with our
+   own checks):
 
    * ``namespace_tag`` — the AI/LLM pack tags rules with ``owasp.*`` and
      ``atlas.*`` namespaces, which are deliberate and simply not (yet) part of
@@ -79,9 +80,7 @@ def _curated_validator() -> SigmaValidator:
     # Built fresh per call on purpose: SigmaValidator instances carry cross-run
     # state (e.g. duplicate-id/title tracking), so a cached one reports false
     # duplicates when linting several rules in a row.
-    selected = {
-        cls for ident, cls in _CORE_VALIDATORS.items() if ident not in _EXCLUDED_VALIDATORS
-    }
+    selected = {cls for ident, cls in _CORE_VALIDATORS.items() if ident not in _EXCLUDED_VALIDATORS}
     return SigmaValidator(selected)
 
 
