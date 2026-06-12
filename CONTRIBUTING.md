@@ -23,7 +23,7 @@ the hard guardrails. The most important ones:
 ```bash
 git clone https://github.com/NotACop38/Sigma-Forge.git && cd Sigma-Forge
 uv sync                       # creates the venv + installs sigma backends/pipelines
-pre-commit install            # gitleaks + ruff hooks (optional but recommended)
+uv run pre-commit install     # gitleaks + ruff hooks (optional but recommended)
 make test                     # ruff + mypy + pytest — needs NO API keys
 ```
 

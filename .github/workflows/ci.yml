@@ -63,6 +63,15 @@ jobs:
         if: matrix.python-version == '3.11'
         run: git diff --exit-code -- docs/attack-layer.json
 
+      - name: Fail if requirements.txt drifted from uv.lock
+        if: matrix.python-version == '3.11'
+        run: |
+          uv export --frozen --no-hashes --no-emit-project -o requirements.txt
+          git diff --exit-code -- requirements.txt || {
+            echo "::error::requirements.txt is stale; run 'make requirements' and commit the result"
+            exit 1
+          }
+
       - name: Upload ATT&CK Navigator layer artifact
         if: matrix.python-version == '3.11'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

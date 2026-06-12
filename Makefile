@@ -5,7 +5,7 @@ RUN := uv run
 PROMPT ?=
 export PROMPT
 
-.PHONY: help install lint typecheck convert evaluate coverage test golden draft clean
+.PHONY: help install lint typecheck convert evaluate coverage test golden requirements draft clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -32,6 +32,9 @@ coverage: ## Emit the ATT&CK Navigator layer JSON + render the heatmap PNG
 
 golden: ## Regenerate golden SPL/KQL conversion snapshots
 	$(RUN) python -m tests.regen_golden
+
+requirements: ## Regenerate requirements.txt (pip fallback) from uv.lock
+	uv export --frozen --no-hashes --no-emit-project -o requirements.txt
 
 test: ## Run the full test suite (lint, typecheck, convert, evaluate) — same gates as CI
 	$(RUN) ruff check src tests
