@@ -31,6 +31,22 @@ from .evaluate import load_collection  # noqa: E402
 _TECHNIQUE_RE = re.compile(r"^t\d{4}(\.\d{3})?$", re.IGNORECASE)
 _ATLAS_RE = re.compile(r"^t\d{4}(\.\d{3})?$", re.IGNORECASE)
 
+# Canonical technique -> tactic(s) per public ATT&CK data (attack.mitre.org),
+# for the techniques shipped in rules/. A rule may carry several tactic tags
+# (one per technique), so pairing each technique with the rule's whole tactic
+# set mislabels the heatmap (e.g. T1027 is Defense Evasion, never Execution).
+# Unknown techniques fall back to the rule's tactic tags.
+_TECHNIQUE_CANONICAL_TACTICS: dict[str, tuple[str, ...]] = {
+    "T1003.001": ("credential-access",),
+    "T1027": ("defense-evasion",),
+    "T1047": ("execution",),
+    "T1053.005": ("execution", "persistence", "privilege-escalation"),
+    "T1059.001": ("execution",),
+    "T1105": ("command-and-control",),
+    "T1140": ("defense-evasion",),
+    "T1490": ("impact",),
+}
+
 # ATT&CK tactic Sigma-tag shortname (hyphenated) -> (display name, matrix order).
 _TACTICS = {
     "reconnaissance": ("Reconnaissance", 0),
@@ -86,7 +102,11 @@ def collect_coverage(paths: list[Path] | None = None) -> CoverageData:
                     data.atlas_rules[f"AML.{name.upper()}"].append(title)
             for tech in techniques:
                 data.technique_rules[tech].append(title)
-                data.technique_tactics[tech].update(tactics)
+                canonical = _TECHNIQUE_CANONICAL_TACTICS.get(tech)
+                if canonical:
+                    data.technique_tactics[tech].update(set(canonical) & tactics or canonical)
+                else:
+                    data.technique_tactics[tech].update(tactics)
     return data
 
 

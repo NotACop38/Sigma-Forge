@@ -18,6 +18,20 @@ def test_collects_real_attack_techniques():
         assert _TECH.match(tech), f"{tech} is not a valid ATT&CK technique ID"
 
 
+def test_techniques_pair_with_their_canonical_tactic():
+    """A rule tagging several tactics must not smear them across all its techniques.
+
+    win_encoded_powershell tags execution + defense-evasion for T1059.001 + T1027;
+    T1027 is canonically Defense Evasion only, and T1105 (certutil) is Command and
+    Control only — the heatmap previously labelled both with the wrong tactic.
+    """
+    data = cov.collect_coverage()
+    assert data.technique_tactics["T1027"] == {"defense-evasion"}
+    assert data.technique_tactics["T1059.001"] == {"execution"}
+    assert data.technique_tactics["T1105"] == {"command-and-control"}
+    assert data.technique_tactics["T1140"] == {"defense-evasion"}
+
+
 def test_layer_is_valid_navigator_v4():
     layer = cov.build_layer(cov.collect_coverage())
     assert layer["domain"] == "enterprise-attack"
