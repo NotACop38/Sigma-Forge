@@ -59,20 +59,33 @@ def test_build_site_emits_pages_bundle(tmp_path):
     assert str(summary.attack_technique_count) in html
 
 
-def test_build_site_removes_stale_files(tmp_path):
+def test_build_site_refreshes_previous_bundle(tmp_path):
+    """A directory holding only a previous site bundle is cleaned and rebuilt."""
     site = tmp_path / "_site"
-    site.mkdir()
-    stale = site / "stale.txt"
-    stale.write_text("do not publish", encoding="utf-8")
+    cov.build_site(site)
+    (site / "attack-layer.json").write_text("stale", encoding="utf-8")
 
     cov.build_site(site)
 
-    assert not stale.exists()
+    assert (site / "attack-layer.json").read_text(encoding="utf-8") != "stale"
     assert sorted(path.name for path in site.iterdir()) == [
         "attack-layer.json",
         "attack-layer.png",
         "index.html",
     ]
+
+
+def test_build_site_refuses_directory_with_foreign_files(tmp_path):
+    """`--site docs` (or any populated dir) must refuse instead of rmtree'ing it."""
+    site = tmp_path / "docs"
+    site.mkdir()
+    precious = site / "threat-model.md"
+    precious.write_text("do not delete", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="refusing to clean"):
+        cov.build_site(site)
+
+    assert precious.read_text(encoding="utf-8") == "do not delete"
 
 
 def test_build_site_replaces_symlink_before_writing(tmp_path):

@@ -41,10 +41,12 @@ Out of scope (by design — see [`CLAUDE.md`](CLAUDE.md) guardrails):
 
 - **No secrets in the repo.** A [gitleaks](https://github.com/gitleaks/gitleaks)
   pre-commit hook and a CI secret-scan job guard every commit and the working
-  tree. The only allowlisted strings are clearly-labelled, non-functional
-  synthetic fixtures (see `.gitleaks.toml`).
-- **Least-privilege CI.** Workflows declare `permissions: contents: read` and
-  pin actions to released versions.
+  tree. The only allowlisted strings are exact, clearly-labelled, non-functional
+  synthetic fixture lines (see `.gitleaks.toml`), and a CI canary step plants a
+  fake credential on every run to prove the allowlist stays that narrow.
+- **Least-privilege CI.** Workflows declare `permissions: contents: read`, pin
+  actions to commit SHAs, and verify the gitleaks binary against a pinned
+  SHA-256 checksum before running it.
 - **Deterministic, offline-by-default core.** Conversion, evaluation, linting,
   and tests require no API keys and no outbound network access.
 - **Dependency updates** are proposed automatically via Dependabot

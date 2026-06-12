@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -73,11 +74,26 @@ class DraftResult:
 # --- model call -----------------------------------------------------------
 
 
+_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
 def _default_completion(threat: str) -> str:  # pragma: no cover - needs a live local server
+    from urllib.parse import urlparse
+
     from openai import OpenAI
 
+    base_url = os.getenv("OPENAI_BASE_URL", DEFAULT_BASE_URL)
+    host = urlparse(base_url).hostname or ""
+    if host not in _LOCAL_HOSTS:
+        # The drafter is local-first by design; an inherited OPENAI_BASE_URL
+        # silently turning it into a cloud call should never go unnoticed.
+        print(
+            f"note: OPENAI_BASE_URL points at non-local host '{host}'; "
+            "your threat sentence will be sent there",
+            file=sys.stderr,
+        )
     client = OpenAI(
-        base_url=os.getenv("OPENAI_BASE_URL", DEFAULT_BASE_URL),
+        base_url=base_url,
         api_key=os.getenv("OPENAI_API_KEY") or "not-needed",
     )
     response = client.chat.completions.create(

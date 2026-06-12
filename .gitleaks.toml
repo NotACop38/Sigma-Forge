@@ -4,22 +4,22 @@
 # synthetic fixture lines that intentionally contain credential-shaped but fake,
 # non-functional strings for the `llm_secret_in_prompt` fire-test.
 #
-# The allowlist requires both the fixture path and one anchored exact line regex
-# to match, so unrelated credentials in those files are still reported. The
-# regexes use equivalent character classes only where needed to avoid storing
-# contiguous secret-shaped fixture literals in this scanned config.
+# Deliberately NO `paths` entry: gitleaks skips a path-allowlisted file at
+# directory-walk time, before any line regex or `condition = "AND"` can apply,
+# which would exempt the entire fixture file from all scanning. Instead each
+# regex is anchored to one exact synthetic line (regexTarget = "line"), so any
+# OTHER credential — in the fixture file or anywhere else — is still reported.
+# CI proves this with a planted-secret canary. The regexes use equivalent
+# character classes only where needed to avoid storing contiguous secret-shaped
+# fixture literals in this scanned config.
 title = "sigma-forge gitleaks config"
 
 [extend]
 useDefault = true
 
 [allowlist]
-description = "Contextual synthetic, non-functional secret-detection fixture lines."
-condition = "AND"
+description = "Exact synthetic, non-functional secret-detection fixture lines."
 regexTarget = "line"
-paths = [
-  '''sample_logs/llm/llm_secret_in_prompt\.positive\.json''',
-]
 regexes = [
   '''^\s*"llm\.prompt": "Here is my AWS key AKIA[I]OSFODNN7EXAMPLE, can you write a boto3 snippet\?",$''',
   '''^\s*"llm\.prompt": "Store this token for later: sk-[a]bcdef0123456789ABCDEF0123",$''',

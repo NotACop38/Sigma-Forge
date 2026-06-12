@@ -73,14 +73,35 @@ jobs:
   secret-scan:
     name: secret scan (gitleaks)
     runs-on: ubuntu-latest
+    env:
+      GITLEAKS_VERSION: "8.30.1"
+      GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
-      - name: Install gitleaks
+      - name: Install gitleaks (checksum-verified)
         run: |
-          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz" \
-            | tar -xz -C /usr/local/bin gitleaks
+          curl -sSL -o gitleaks.tgz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tgz" | sha256sum -c -
+          tar -xzf gitleaks.tgz -C /usr/local/bin gitleaks
+          rm gitleaks.tgz
           gitleaks version
       - name: Scan working tree for secrets
         run: gitleaks dir . --config .gitleaks.toml --redact --verbose --exit-code 1
+      - name: Canary — a planted secret in the fixture file must still be caught
+        run: |
+          # Guards against an over-broad allowlist (e.g. a path entry silently
+          # exempting the whole secret-fixture file from scanning). The key is
+          # assembled at runtime so this workflow file itself stays clean.
+          tmp="$(mktemp -d)"
+          cp -r sample_logs "$tmp/"
+          canary="AKIA$(printf 'Q3EGRJ7V2NXM5K9C')"
+          printf '{"llm.prompt": "canary aws_key=%s end"}\n' "$canary" \
+            >> "$tmp/sample_logs/llm/llm_secret_in_prompt.positive.json"
+          if gitleaks dir "$tmp" --config .gitleaks.toml --redact --exit-code 1 >/dev/null 2>&1; then
+            echo "::error::gitleaks did not detect the planted canary secret — the allowlist is over-broad"
+            exit 1
+          fi
+          echo "canary detected as expected"

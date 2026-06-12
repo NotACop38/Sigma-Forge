@@ -13,6 +13,7 @@ from pathlib import Path
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.syntax import Syntax
 from rich.table import Table
 
@@ -37,7 +38,9 @@ def _discover_rules(rule_paths: list[Path] | None) -> list[Path]:
     try:
         return convert_mod.iter_rule_files(rule_paths)
     except convert_mod.ConversionError as exc:
-        console.print(f"[red]{exc}[/red]")
+        # escape(): error text embeds rule-controlled strings (titles, YAML
+        # fragments) that must not be interpreted as Rich markup.
+        console.print(f"[red]{escape(str(exc))}[/red]")
         raise typer.Exit(code=1) from exc
 
 
@@ -83,7 +86,7 @@ def convert(
             result = convert_mod.convert_file(f)
         except convert_mod.ConversionError as exc:
             failures += 1
-            console.print(f"[red]conversion failed:[/red] {exc}")
+            console.print(f"[red]conversion failed:[/red] {escape(str(exc))}")
             continue
         wanted = [target] if target else list(result.queries)
         for t in wanted:
@@ -158,7 +161,11 @@ def coverage(
     from . import coverage as coverage_mod
 
     if site is not None:
-        summary = coverage_mod.build_site(site)
+        try:
+            summary = coverage_mod.build_site(site)
+        except ValueError as exc:
+            console.print(f"[red]{escape(str(exc))}[/red]")
+            raise typer.Exit(code=1) from exc
         console.print(f"[green]Built coverage site in {site}[/green].")
     else:
         summary = coverage_mod.build_coverage(layer_path=layer, png_path=png)
@@ -191,7 +198,9 @@ def draft(
     else:
         console.print("[bold red]REJECTED[/bold red] — rule did not pass validation:")
         for stage, err in result.errors:
-            console.print(f"  [red]{stage}[/red]: {err}")
+            # err embeds model-supplied text (rule titles etc.); never let it
+            # smuggle Rich markup (e.g. live [link=...] hyperlinks) into output.
+            console.print(f"  [red]{stage}[/red]: {escape(err)}")
         raise typer.Exit(code=1)
 
 

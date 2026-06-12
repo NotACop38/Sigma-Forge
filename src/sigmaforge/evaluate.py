@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from functools import cache
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 from sigma.collection import SigmaCollection
 from sigma.conditions import (
@@ -61,16 +61,29 @@ class UnsupportedFeatureError(NotImplementedError):
 
 
 REGEX_TIMEOUT_SECONDS = 0.25
+# Budget for the worker process to boot before the regex clock starts. Forked
+# workers are ready almost instantly, but spawn-based platforms (Windows;
+# macOS's default) re-import this module in the child, which alone can exceed
+# REGEX_TIMEOUT_SECONDS and would otherwise fail every |re evaluation.
+WORKER_STARTUP_TIMEOUT_SECONDS = 15.0
 
 
 def _regex_search_worker(pattern: str, target: str, conn: Any) -> None:
     """Run a rule-controlled regex in a disposable child process."""
     try:
+        conn.send(("ready", None))
         conn.send(("ok", re.search(pattern, target) is not None))
     except re.error as exc:
         conn.send(("error", str(exc)))
     finally:
         conn.close()
+
+
+def _terminate(proc: Any, conn: Any, message: str) -> NoReturn:
+    proc.terminate()
+    proc.join()
+    conn.close()
+    raise UnsupportedFeatureError(message)
 
 
 def _safe_regex_search(pattern: str, target: str) -> bool:
@@ -81,22 +94,26 @@ def _safe_regex_search(pattern: str, target: str) -> bool:
     proc.daemon = True
     proc.start()
     child_conn.close()
-    proc.join(REGEX_TIMEOUT_SECONDS)
 
-    if proc.is_alive():
-        proc.terminate()
-        proc.join()
-        parent_conn.close()
-        raise UnsupportedFeatureError(
-            f"regular expression evaluation timed out after {REGEX_TIMEOUT_SECONDS:.2f}s"
-        )
+    # The "ready" handshake separates interpreter start-up cost from the
+    # regex-evaluation budget, so the timeout measures only the search itself.
+    try:
+        if not parent_conn.poll(WORKER_STARTUP_TIMEOUT_SECONDS):
+            _terminate(proc, parent_conn, "regular expression worker failed to start")
+        parent_conn.recv()
 
-    if not parent_conn.poll():
-        parent_conn.close()
-        raise UnsupportedFeatureError("regular expression evaluation failed")
+        if not parent_conn.poll(REGEX_TIMEOUT_SECONDS):
+            _terminate(
+                proc,
+                parent_conn,
+                f"regular expression evaluation timed out after {REGEX_TIMEOUT_SECONDS:.2f}s",
+            )
+        status, payload = parent_conn.recv()
+    except EOFError:
+        _terminate(proc, parent_conn, "regular expression evaluation failed")
 
-    status, payload = parent_conn.recv()
     parent_conn.close()
+    proc.join()
     if status == "error":
         raise UnsupportedFeatureError(f"invalid regular expression: {payload}")
     return bool(payload)
@@ -279,6 +296,7 @@ def _compare(value: float, op: CorrOp, threshold: float) -> bool:
 
 
 MAX_FIXTURE_EVENTS = 5_000
+MAX_FIXTURE_BYTES = 5 * 1024 * 1024
 MAX_CORRELATION_GROUP_EVENTS = 5_000
 
 
@@ -414,6 +432,13 @@ def _sample_path(rule_path: Path, polarity: str) -> Path:
 def _load_events(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
+    # Byte cap before parsing: the event-count cap alone would let one huge
+    # event (or string) exhaust memory inside json.loads first.
+    size = path.stat().st_size
+    if size > MAX_FIXTURE_BYTES:
+        raise UnsupportedFeatureError(
+            f"{path} is {size} bytes; maximum supported fixture size is {MAX_FIXTURE_BYTES} bytes"
+        )
     data = json.loads(path.read_text(encoding="utf-8"))
     events = data if isinstance(data, list) else [data]
     _check_fixture_size(events, path)
