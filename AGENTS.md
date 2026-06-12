@@ -47,14 +47,24 @@ Defined in `src/sigmaforge/llm_schema.py`; documented in `docs/sigma-subset.md`.
 ## Detection content
 Classic pack — logsource `process_creation`; standard SigmaHQ field names (Image, CommandLine,
 ParentImage, ...):
-  - `win_encoded_powershell`  -> ATT&CK T1059.001 + T1027 (powershell -enc / FromBase64String)
-  - `win_certutil_download`   -> T1105 + T1140            (certutil -urlcache -f / -decode)
-  - `win_wmic_process_create` -> T1047                    (wmic process call create)
+  - `win_encoded_powershell`     -> ATT&CK T1059.001 + T1027 (powershell -enc / FromBase64String)
+  - `win_certutil_download`      -> T1105 + T1140   (certutil -urlcache / -verifyctl / -decode)
+  - `win_wmic_process_create`    -> T1047           (wmic process call create)
+  - `win_vssadmin_shadow_delete` -> T1490           (vssadmin delete shadows)
+  - `win_lsass_comsvcs_dump`     -> T1003.001       (comsvcs.dll MiniDump of lsass)
+  - `win_schtasks_persistence`   -> T1053.005       (schtasks /create persistence)
 AI/LLM pack — logsource custom `llm_app`; mapped to OWASP LLM + ATLAS (IDs verified at
 atlas.mitre.org / mitre-atlas/atlas-data):
-  - `llm_prompt_injection_phrases` -> OWASP LLM01, ATLAS AML.T0051 (+ .000 Direct), AML.T0054
-  - `llm_secret_in_prompt`         -> OWASP LLM02, ATLAS AML.T0057
-  - `llm_token_cost_spike`         -> OWASP LLM10, ATLAS AML.T0034, AML.T0029
+  - `llm_prompt_injection_phrases`    -> OWASP LLM01, ATLAS AML.T0051 (+ .000 Direct), AML.T0054
+  - `llm_secret_in_prompt`            -> OWASP LLM02, ATLAS AML.T0057
+  - `llm_insecure_output_handling`    -> OWASP LLM05, ATLAS AML.T0048
+  - `llm_excessive_agency_tool_abuse` -> OWASP LLM06, ATLAS AML.T0053
+  - `llm_system_prompt_leak`          -> OWASP LLM07, ATLAS AML.T0069.002, AML.T0057
+  - `llm_token_cost_spike`            -> OWASP LLM10, ATLAS AML.T0034, AML.T0029
+Correlation pack — Sigma correlations (`event_count` / `value_count` over a timespan, grouped by
+`user.id`); convert to Splunk only (the Kusto backend does not implement correlations):
+  - `llm_prompt_injection_burst` -> >=3 injection attempts per user.id in 10m (LLM01, AML.T0051)
+  - `llm_tool_target_fanout`     -> >=5 distinct tool.target_host per user.id in 5m (LLM06, AML.T0053)
 Every rule: unique GUID id, status, level, description, author, valid logsource, attack/ATLAS tags.
 
 ## Components & Definition of Done
@@ -63,9 +73,10 @@ Every rule: unique GUID id, status, level, description, author, valid logsource,
   regenerates. DoD: `pytest tests/test_convert.py` green, no conversion errors.
 - `evaluate.py` — load each rule via pySigma (`SigmaCollection.from_yaml`), then evaluate the
   PARSED detection/condition tree against JSON events. Supported subset (documented): equals,
-  contains, startswith, endswith, re, null; lists = OR; field maps = AND; conditions
-  "sel and not filt", "1 of sel_*", "all of sel_*", keywords. Raise a clear error on anything
-  unsupported. DoD: every positive fixture matches, every negative does not.
+  contains, startswith, endswith, re, null; numeric compares (gt/gte/lt/lte); lists = OR;
+  field maps = AND; conditions "sel and not filt", "1 of sel_*", "all of sel_*", keywords;
+  correlations (event_count / value_count + timespan, sliding windows). Raise a clear error on
+  anything unsupported. DoD: every positive fixture matches, every negative does not.
 - `coverage.py` — emit a MITRE ATT&CK Navigator layer (v4.x JSON) from rule tags AND render a
   static heatmap PNG to `docs/images/attack-layer.png` with matplotlib. DoD: valid layer JSON,
   real technique IDs, PNG committed.
@@ -80,21 +91,25 @@ Every rule: unique GUID id, status, level, description, author, valid logsource,
   bad one, zero network calls.
 
 ## CI (.github/workflows/ci.yml)
-On push and PR, Python 3.11: install deps + sigma plugins -> ruff + mypy -> convert all rules to
-SPL and KQL (fail on error) -> pytest (lint, convert, evaluate) -> upload the ATT&CK layer JSON as
-an artifact. CI, license, and python-version badges in the README.
+On push and PR, a Python 3.11 + 3.12 matrix: `uv sync --frozen` (deps incl. sigma backends) ->
+ruff check + ruff format --check + mypy -> convert all rules to SPL and KQL (fail on error) ->
+pytest (lint, golden conversions, fire-tests) -> rebuild the ATT&CK layer, fail if the committed
+JSON is stale, and upload it as an artifact. A separate gitleaks job scans for secrets. CI,
+license, and python-version badges in the README.
 
 ## Repo layout
 ```
-.github/workflows/ci.yml | docs/{threat-model.md, sigma-subset.md, images/} |
-rules/{classic/,llm/} | pipelines/{llm_splunk.yml, llm_kusto.yml} |
-sample_logs/{classic/,llm/} (*.positive.json, *.negative.json) |
-src/sigmaforge/{__init__.py, cli.py, convert.py, evaluate.py, coverage.py, llm_schema.py, draft.py} |
-tests/{test_lint.py, test_convert.py, test_evaluate.py, golden/} |
-CLAUDE.md AGENTS.md README.md LICENSE .gitignore .env.example .pre-commit-config.yaml Makefile
-pyproject.toml requirements.txt
+.github/{workflows/ci.yml, dependabot.yml} |
+docs/{threat-model.md, sigma-subset.md, attack-layer.json, images/} |
+rules/{classic/,llm/,correlation/} (DRL-1.1) | pipelines/{llm_splunk.yml, llm_kusto.yml} |
+sample_logs/{classic/,llm/,correlation/} (*.positive.json, *.negative.json) |
+src/sigmaforge/{cli.py, convert.py, evaluate.py, coverage.py, lint.py, llm_schema.py, draft.py} |
+tests/{test_lint.py, test_convert.py, test_evaluate.py, test_correlation.py, test_coverage.py,
+       test_draft.py, regen_golden.py, golden/} |
+CLAUDE.md AGENTS.md README.md CONTRIBUTING.md SECURITY.md LICENSE .gitignore .env.example
+.gitleaks.toml .pre-commit-config.yaml Makefile pyproject.toml requirements.txt uv.lock demo.tape
 ```
-Makefile targets: lint, convert, test, coverage, golden, draft.
+Makefile targets: install, lint, typecheck, convert, evaluate, coverage, golden, test, draft, clean.
 
 ## Definition of Done
 From a clean clone, `make test` passes with NO API keys; every rule lints, converts to SPL+KQL,
