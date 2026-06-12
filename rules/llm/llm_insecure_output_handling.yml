@@ -31,6 +31,6 @@ falsepositives:
   - Developer assistants legitimately returning code samples; review consumer-side handling.
 level: high
 tags:
-  - attack.initial-access
+  - attack.execution
   - owasp.llm05
   - atlas.t0048

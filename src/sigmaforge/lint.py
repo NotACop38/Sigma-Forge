@@ -5,8 +5,9 @@ Two layers:
 1. **Structural** — the rule must parse via pySigma and carry the metadata a
    production detection needs: a valid UUID ``id``, ``title``, ``status``,
    ``level``, a ``logsource`` and a ``detection`` block.
-2. **pySigma validators** — the curated core validator set is run. Two
-   validators are intentionally excluded and replaced with our own checks:
+2. **pySigma validators** — the curated core validator set is run. Three
+   validators are intentionally excluded (and, where needed, replaced with our
+   own checks):
 
    * ``namespace_tag`` — the AI/LLM pack tags rules with ``owasp.*`` and
      ``atlas.*`` namespaces, which are deliberate and simply not (yet) part of

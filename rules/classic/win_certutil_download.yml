@@ -3,9 +3,9 @@ id: 21f411cb-b37f-454b-b802-9070f98ef31e
 status: experimental
 description: >
   Detects abuse of the living-off-the-land binary certutil.exe to download a
-  remote file (-urlcache -f) or to decode a previously staged payload
-  (-decode), behaviour associated with ingress tool transfer and
-  deobfuscation. Authored from public MITRE ATT&CK references.
+  remote file (-urlcache -f, or the -verifyctl variant) or to decode a
+  previously staged payload (-decode), behaviour associated with ingress tool
+  transfer and deobfuscation. Authored from public MITRE ATT&CK references.
 author: sigma-forge
 date: 2026-06-03
 references:

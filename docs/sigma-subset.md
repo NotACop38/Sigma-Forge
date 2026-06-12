@@ -18,13 +18,13 @@ message rather than silently mis-matching.
 | Construct | Sigma example | Semantics |
 |-----------|---------------|-----------|
 | equals | `Field: value` | case-insensitive exact match |
-| `contains` | `Field|contains: x` | substring |
-| `startswith` | `Field|startswith: x` | prefix |
-| `endswith` | `Field|endswith: x` | suffix |
-| `all` | `Field|contains|all: [a, b]` | AND across the listed values |
-| `re` | `Field|re: 'pat'` | regular expression (`re.search`) |
+| `contains` | `Field\|contains: x` | substring |
+| `startswith` | `Field\|startswith: x` | prefix |
+| `endswith` | `Field\|endswith: x` | suffix |
+| `all` | `Field\|contains\|all: [a, b]` | AND across the listed values |
+| `re` | `Field\|re: 'pat'` | regular expression (`re.search`) |
 | `null` | `Field: null` | field absent or null |
-| numeric compare | `Field|gte: 8000` | `gt` / `gte` / `lt` / `lte` / `neq` (numeric) |
+| numeric compare | `Field\|gte: 8000` | `gt` / `gte` / `lt` / `lte` / `neq` (numeric) |
 
 > Numeric comparison is a deliberate extension beyond the original brief's base
 > subset — it makes consumption/threshold detections (e.g. token spikes)
@@ -69,11 +69,14 @@ either event shape.
 ---
 
 ## Not supported (raises a clear error)
-`base64` / `base64offset` expansion, `cidr`, `fieldref`, `|expand`, placeholder
-(`%var%`) expansion, and correlation types other than `event_count` /
-`value_count` (`temporal*`, `value_sum/avg/percentile/median`). These convert
-fine to SPL/KQL via the backends, but the offline evaluator refuses to guess at
-them.
+`base64offset` expansion, `cidr`, `fieldref`, `|expand`, placeholder (`%var%`)
+expansion, and correlation types other than `event_count` / `value_count`
+(`temporal*`, `value_sum/avg/percentile/median`). These convert fine to SPL/KQL
+via the backends, but the offline evaluator refuses to guess at them.
+
+> Plain `|base64` is *not* in this list: pySigma encodes the value at parse time,
+> so it reaches the evaluator as an ordinary string and matches the
+> base64-encoded literal exactly as the backends would.
 
 ---
 

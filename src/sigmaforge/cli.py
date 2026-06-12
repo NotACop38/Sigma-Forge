@@ -55,7 +55,10 @@ def convert(
     paths: list[Path] | None = typer.Argument(None, help="Rule files/dirs (default: rules/)."),
     all_rules: bool = typer.Option(False, "--all", help="Convert every rule under rules/."),
     target: str | None = typer.Option(
-        None, "--target", "-t", help="Only emit this target (splunk|kusto)."
+        None,
+        "--target",
+        "-t",
+        help=f"Only emit this target ({'|'.join(convert_mod.TARGET_IDS)}).",
     ),
     check: bool = typer.Option(
         False, "--check", help="Exit non-zero if any rule fails to convert (CI gate)."

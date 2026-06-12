@@ -12,10 +12,13 @@ Supported leaf semantics (documented in ``docs/sigma-subset.md``):
 * ``contains`` / ``startswith`` / ``endswith`` / ``all`` (wildcard SigmaStrings)
 * ``re`` (regular expression)
 * ``null`` (field absent or null)
+* numeric comparisons (``gt`` / ``gte`` / ``lt`` / ``lte`` / ``neq``)
 * keywords (free-text search across all event values)
 
-Anything else (e.g. ``base64``, ``cidr``, numeric ``lt``/``gt``, ``fieldref``)
-raises :class:`UnsupportedFeatureError` with a clear message rather than guessing.
+(Plain ``base64`` values are encoded by pySigma at parse time and arrive here as
+ordinary strings, so they match the encoded literal.) Anything else — e.g.
+``base64offset``, ``cidr``, ``fieldref`` — raises
+:class:`UnsupportedFeatureError` with a clear message rather than guessing.
 """
 
 from __future__ import annotations
