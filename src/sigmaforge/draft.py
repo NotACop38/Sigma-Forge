@@ -72,6 +72,7 @@ class DraftResult:
 
 # --- model call -----------------------------------------------------------
 
+
 def _default_completion(threat: str) -> str:  # pragma: no cover - needs a live local server
     from openai import OpenAI
 
@@ -97,6 +98,7 @@ def extract_yaml(text: str) -> str:
 
 
 # --- positive-event synthesis (for the fire-test gate) --------------------
+
 
 def _literal(value: SigmaString) -> str:
     return "".join(p for p in value.s if isinstance(p, str)) or "x"
@@ -160,6 +162,7 @@ def _synthesize_leaf(field_name: str, value: Any) -> tuple[dict[str, Any], bool]
 
 
 # --- validation pipeline --------------------------------------------------
+
 
 def validate_rule_yaml(rule_yaml: str) -> DraftResult:
     """Run lint -> convert -> fire-test. Returns a populated DraftResult."""

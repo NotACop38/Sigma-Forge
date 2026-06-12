@@ -92,6 +92,7 @@ def collect_coverage(paths: list[Path] | None = None) -> CoverageData:
 
 # --- Navigator layer ------------------------------------------------------
 
+
 def build_layer(data: CoverageData) -> dict:
     techniques = []
     for tech, rules in sorted(data.technique_rules.items()):
@@ -123,6 +124,7 @@ def build_layer(data: CoverageData) -> dict:
 
 # --- heatmap PNG ----------------------------------------------------------
 
+
 def render_heatmap(data: CoverageData, png_path: Path) -> None:
     png_path = Path(png_path)
     png_path.parent.mkdir(parents=True, exist_ok=True)
@@ -137,7 +139,9 @@ def render_heatmap(data: CoverageData, png_path: Path) -> None:
     counts = [len(data.technique_rules[t]) for t in techs]
     labels = []
     for t in techs:
-        tac = sorted(data.technique_tactics.get(t, set()), key=lambda x: _TACTICS.get(x, ("", 99))[1])
+        tac = sorted(
+            data.technique_tactics.get(t, set()), key=lambda x: _TACTICS.get(x, ("", 99))[1]
+        )
         tac_name = _TACTICS[tac[0]][0] if tac else "—"
         labels.append(f"{t}  ·  {tac_name}")
 
@@ -271,7 +275,9 @@ def build_site(site_dir: Path, paths: list[Path] | None = None) -> CoverageSumma
         paths=paths,
     )
     (site_dir / "index.html").write_text(
-        _SITE_HTML.format(attack=summary.attack_technique_count, atlas=summary.atlas_technique_count),
+        _SITE_HTML.format(
+            attack=summary.attack_technique_count, atlas=summary.atlas_technique_count
+        ),
         encoding="utf-8",
     )
     return summary

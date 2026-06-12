@@ -14,8 +14,9 @@ help: ## Show this help
 install: ## Sync the environment (deps + sigma plugins)
 	uv sync
 
-lint: ## Run ruff (lint) over src + tests
+lint: ## Run ruff (lint + format check) over src + tests
 	$(RUN) ruff check src tests
+	$(RUN) ruff format --check src tests
 
 typecheck: ## Run mypy over the package
 	$(RUN) mypy
@@ -34,6 +35,7 @@ golden: ## Regenerate golden SPL/KQL conversion snapshots
 
 test: ## Run the full test suite (lint, typecheck, convert, evaluate) — same gates as CI
 	$(RUN) ruff check src tests
+	$(RUN) ruff format --check src tests
 	$(RUN) mypy
 	$(RUN) pytest
 

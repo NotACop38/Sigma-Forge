@@ -85,7 +85,9 @@ def convert(
         wanted = [target] if target else list(result.queries)
         for t in wanted:
             if t not in result.queries:
-                console.print(f"[dim]{convert_mod.TARGET_LABELS.get(t, t)}: n/a for this rule[/dim]")
+                console.print(
+                    f"[dim]{convert_mod.TARGET_LABELS.get(t, t)}: n/a for this rule[/dim]"
+                )
                 continue
             tgt = convert_mod.TARGETS[t]
             console.print(f"[bold]{tgt.label}[/bold]")
@@ -144,7 +146,9 @@ def coverage(
     layer: Path = typer.Option(Path("docs/attack-layer.json"), help="Navigator layer JSON output."),
     png: Path = typer.Option(Path("docs/images/attack-layer.png"), help="Heatmap PNG output."),
     site: Path | None = typer.Option(
-        None, "--site", help="Also build a static coverage site (index.html + PNG + layer) in this dir."
+        None,
+        "--site",
+        help="Also build a static coverage site (index.html + PNG + layer) in this dir.",
     ),
 ) -> None:
     """Emit an ATT&CK Navigator layer and render the static heatmap PNG."""

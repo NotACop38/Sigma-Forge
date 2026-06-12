@@ -78,13 +78,19 @@ def test_converts_for_target(rule_path: Path, target: str):
     assert conv.query(target), f"{rule_path.stem} produced empty {target} output"
 
 
+def test_no_stale_golden_snapshots():
+    """Every golden corresponds to a live (rule, target) pair; run `make golden` to prune."""
+    expected = {f"{f.stem}.{t}.txt" for f, t in CASES}
+    actual = {p.name for p in GOLDEN_DIR.glob("*.txt")}
+    stale = actual - expected
+    assert not stale, f"stale golden snapshot(s) with no matching rule/target: {sorted(stale)}"
+
+
 @pytest.mark.parametrize(("rule_path", "target"), CASES, ids=CASE_IDS)
 def test_matches_golden(rule_path: Path, target: str):
     conv = convert_mod.convert_file(rule_path)
     golden = GOLDEN_DIR / f"{conv.name}.{target}.txt"
-    assert golden.exists(), (
-        f"missing golden snapshot {golden.name}; run `make golden` to create it"
-    )
+    assert golden.exists(), f"missing golden snapshot {golden.name}; run `make golden` to create it"
     expected = golden.read_text(encoding="utf-8").strip()
     assert conv.query(target).strip() == expected, (
         f"{conv.name} {target} drifted from golden; run `make golden` to update"
