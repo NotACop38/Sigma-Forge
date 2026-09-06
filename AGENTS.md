@@ -16,7 +16,7 @@ This file is the operating contract for coding agents. Sigma-Forge authors defen
 ## Scope and context
 
 - Complete the authorized task. A maintenance, review, or documentation request does not require adding detection packs, polishing the whole product, or creating a release.
-- Read only the supporting sections needed for the task, and reuse context already read unless it has changed. `CLAUDE.md` retains the expanded project brief and initial-release checklist; this file governs current agent workflow.
+- Read only the supporting sections needed for the task, and reuse context already read unless it has changed. `CLAUDE.md` is a compatibility pointer to this operating contract.
 - Use `docs/sigma-subset.md` for the supported rule and evaluation contract, `docs/threat-model.md` for defensive scope, and `src/sigmaforge/llm_schema.py` for the synthetic event schema. Check current rules, fixtures, and tests when changing behavior rather than relying on a duplicated inventory.
 - `pyproject.toml` and `uv.lock` define dependencies; `Makefile` defines local commands; `.github/workflows/ci.yml` defines CI. Use `uv` to manage Sigma plugin packages: `sigma plugin install` assumes pip is available in the environment.
 - Make routine, reversible choices within scope. Ask only when a missing decision or authorization materially changes the result and cannot be inferred. Do not ask again for approval already given.
@@ -27,7 +27,7 @@ This file is the operating contract for coding agents. Sigma-Forge authors defen
 - Preserve the workflow's conversion, Navigator-layer freshness, lockfile export, and secret-scan checks. Run the relevant checks when their inputs change; do not regenerate goldens or artifacts merely to hide a failing comparison.
 - Reuse passing results while the checked revision and inputs remain unchanged. Rerun affected checks after further changes and report failures or checks that could not run accurately.
 - Review the diff for secrets, private/local traces, real-world data, and unsupported claims before publishing. Keep examples synthetic and preserve the secret-scan allowlist boundaries.
-- Commit only the intended changes and follow the user's delivery instructions. Create tags or releases only when requested; the initial v0.1.0 checklist is not a requirement for every task.
+- Commit only the intended changes and follow the user's delivery instructions. Create tags or releases only when requested.
 
 ## License
 
