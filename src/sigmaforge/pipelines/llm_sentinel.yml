@@ -1,0 +1,38 @@
+# sigma-forge: Microsoft Sentinel (KQL) processing pipeline for the synthetic
+# `llm_app` logsource.
+#
+# The Kusto backend reads its destination table from the `query_table` pipeline
+# state; sigma-forge appends the backend's prepend-table postprocessing step
+# when it loads this file (see sigmaforge.convert). Rules therefore compile
+# against a custom Log Analytics table, `LLMAppLogs_CL`, whose columns are
+# mapped from the dotted llm_app fields (src/sigmaforge/llm_schema.py).
+#
+# LLMAppLogs_CL and its column names are an illustrative convention for the
+# synthetic schema, not a Microsoft-defined table. Map them to your own
+# ingestion before deploying.
+name: sigma-forge llm_app (Microsoft Sentinel)
+priority: 10
+transformations:
+  - id: llm_set_query_table
+    type: set_state
+    key: query_table
+    val: LLMAppLogs_CL
+    rule_conditions:
+      - type: logsource
+        product: llm_app
+  - id: llm_field_names
+    type: field_name_mapping
+    mapping:
+      llm.prompt: PromptText
+      llm.completion: CompletionText
+      llm.prompt_tokens: PromptTokens
+      llm.completion_tokens: CompletionTokens
+      llm.model: ModelName
+      user.id: UserId
+      app.id: AppId
+      request.source_ip: SourceIP
+      tool.name: ToolName
+      tool.target_host: ToolTargetHost
+    rule_conditions:
+      - type: logsource
+        product: llm_app

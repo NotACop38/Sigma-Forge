@@ -1,16 +1,17 @@
-title: Prompt-injection attempts by user (base)
+title: Prompt Injection Attempt (burst base)
 id: 4f6d37bd-a22d-4392-8d0d-a34f5eb06f4d
 name: llm_prompt_injection_attempt
 status: experimental
 description: >
-  Base detection for the prompt-injection burst correlation: a single LLM
-  prompt containing a known override/jailbreak phrase. Authored from public
-  OWASP/ATLAS references against the synthetic llm_app schema.
+  Base event for the prompt-injection burst correlation: one prompt containing
+  a known override or jailbreak phrase. The phrase list mirrors the standalone
+  llm_prompt_injection_phrases rule (a test keeps the two in sync).
 author: sigma-forge
 date: 2026-06-03
+modified: 2026-09-26
 references:
-  - https://owasp.org/www-project-top-10-for-large-language-model-applications/
-  - https://atlas.mitre.org/techniques/AML.T0051
+  - https://genai.owasp.org/llmrisk/llm01-prompt-injection/
+  - https://atlas.mitre.org/techniques/AML.T0051.000
 logsource:
   product: llm_app
   category: gateway
@@ -19,27 +20,33 @@ detection:
     llm.prompt|contains:
       - 'ignore previous instructions'
       - 'ignore all previous'
+      - 'disregard the above'
+      - 'disregard your instructions'
       - 'developer mode'
       - 'do anything now'
+      - 'you are now DAN'
       - 'bypass your guidelines'
+      - 'reveal your system prompt'
   condition: selection
 falsepositives:
-  - Benign content quoting or discussing injection phrases (e.g. security training material).
+  - Content that quotes or discusses injection phrases, such as security training material.
 level: informational
 tags:
-  - attack.initial-access
   - owasp.llm01
-  - atlas.t0051
+  - atlas.t0051.000
+  - atlas.t0054
 ---
-title: Repeated Prompt-Injection Attempts by a Single User
+title: Repeated Prompt Injection Attempts by One User
 id: b0446a52-4401-4000-bb8b-6e42074cdddd
 status: experimental
 description: >
-  Correlates repeated prompt-injection attempts from one user.id within a short
-  window — a stronger, lower-false-positive signal than any single attempt. Maps
-  to OWASP LLM01 and MITRE ATLAS LLM Prompt Injection.
+  Correlates three or more prompt-injection attempts from the same user.id
+  within ten minutes: a persistent attacker iterating on payloads is a
+  stronger, lower-noise signal than any single attempt. Maps to OWASP LLM01
+  and MITRE ATLAS LLM Prompt Injection (Direct) and LLM Jailbreak.
 author: sigma-forge
 date: 2026-06-03
+modified: 2026-09-26
 correlation:
   type: event_count
   rules:
@@ -53,6 +60,6 @@ falsepositives:
   - Red-team or guardrail-testing sessions.
 level: high
 tags:
-  - attack.initial-access
   - owasp.llm01
-  - atlas.t0051
+  - atlas.t0051.000
+  - atlas.t0054

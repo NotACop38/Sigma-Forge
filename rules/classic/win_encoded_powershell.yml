@@ -2,15 +2,17 @@ title: Encoded PowerShell Command Execution
 id: 93fd6ce6-6e03-489c-ab1f-b7a96115bd5f
 status: experimental
 description: >
-  Detects PowerShell executed with an encoded/Base64 command line
-  (-EncodedCommand / -enc / -e) or in-line FromBase64String decoding, a common
-  technique for obfuscating malicious script content. Authored from public
-  MITRE ATT&CK references; not derived from any proprietary detection.
+  Detects PowerShell started with an encoded command line: -EncodedCommand or
+  any abbreviation PowerShell accepts for it (-e, -ec, -en, -enc, -enco...),
+  written with a hyphen, a slash, or a Unicode dash, or in-line Base64 decoding
+  with FromBase64String. Encoding hides the script body from command-line
+  review. Authored from public MITRE ATT&CK references.
 author: sigma-forge
 date: 2026-06-03
+modified: 2026-09-26
 references:
   - https://attack.mitre.org/techniques/T1059/001/
-  - https://attack.mitre.org/techniques/T1027/
+  - https://attack.mitre.org/techniques/T1027/010/
 logsource:
   category: process_creation
   product: windows
@@ -19,19 +21,21 @@ detection:
     Image|endswith:
       - '\powershell.exe'
       - '\pwsh.exe'
-  selection_enc:
-    CommandLine|contains:
-      - ' -enc '
-      - ' -EncodedCommand '
-      - ' -ec '
+  selection_encoded:
+    CommandLine|windash|contains:
       - ' -e '
-      - 'FromBase64String'
-  condition: selection_img and selection_enc
+      - ' -ec '
+      - ' -en '
+      - ' -enc '
+      - ' -enco'
+  selection_decode:
+    CommandLine|contains: 'FromBase64String'
+  condition: selection_img and (selection_encoded or selection_decode)
 falsepositives:
-  - Administrative scripts that legitimately pass Base64-encoded commands.
+  - Management agents and installers that pass Base64-encoded commands.
 level: high
 tags:
   - attack.execution
-  - attack.defense-evasion
+  - attack.stealth
   - attack.t1059.001
-  - attack.t1027
+  - attack.t1027.010

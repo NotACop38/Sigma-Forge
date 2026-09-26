@@ -14,13 +14,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: lint • convert • fire-test (py${{ matrix.python-version }})
+  test:
+    name: gates (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.11", "3.12", "3.13"]
+    env:
+      UV_PYTHON: ${{ matrix.python-version }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -31,48 +33,47 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
+      - name: Install Python ${{ matrix.python-version }} and locked dependencies
+        run: |
+          uv python install ${{ matrix.python-version }}
+          uv sync --frozen
 
-      - name: Sync dependencies (incl. sigma backends + pipelines)
-        run: uv sync --frozen --python ${{ matrix.python-version }}
+      - name: Ruff (lint and format)
+        run: |
+          uv run ruff check src tests scripts
+          uv run ruff format --check src tests scripts
 
-      - name: Confirm sigma plugins
-        run: uv run --python ${{ matrix.python-version }} sigma list targets
+      - name: Mypy (strict)
+        run: uv run mypy
 
-      - name: Ruff (lint)
-        run: uv run --python ${{ matrix.python-version }} ruff check src tests
+      - name: Pytest (branch coverage >= 90%)
+        run: uv run pytest --cov
 
-      - name: Ruff (format check)
-        run: uv run --python ${{ matrix.python-version }} ruff format --check src tests
+      - name: Rule gate (lint, convert, fire-test every rule)
+        run: uv run sigma-forge check
 
-      - name: Mypy (type check)
-        run: uv run --python ${{ matrix.python-version }} mypy
+      - name: Coverage artifacts are current
+        run: uv run sigma-forge coverage --check
 
-      - name: Convert every rule to SPL and Sentinel/Defender KQL (fail on error)
-        run: uv run --python ${{ matrix.python-version }} sigma-forge convert --all --check
-
-      - name: Pytest (lint + convert goldens + fire-tests)
-        run: uv run --python ${{ matrix.python-version }} pytest
-
-      - name: Build ATT&CK Navigator layer + heatmap
-        if: matrix.python-version == '3.11'
-        run: uv run sigma-forge coverage --layer docs/attack-layer.json --png docs/images/attack-layer.png
-
-      - name: Fail if the committed Navigator layer is stale
-        if: matrix.python-version == '3.11'
-        run: git diff --exit-code -- docs/attack-layer.json
-
-      - name: Fail if requirements.txt drifted from uv.lock
+      - name: requirements.txt matches uv.lock
         if: matrix.python-version == '3.11'
         run: |
           uv export --frozen --no-hashes --no-emit-project -o requirements.txt
           git diff --exit-code -- requirements.txt || {
-            echo "::error::requirements.txt is stale; run 'make requirements' and commit the result"
+            echo "::error::requirements.txt is stale; run 'make requirements' and commit it"
             exit 1
           }
 
-      - name: Upload ATT&CK Navigator layer artifact
+      - name: Wheel works outside the source tree
+        if: matrix.python-version == '3.11'
+        run: |
+          uv build
+          uv venv "$RUNNER_TEMP/wheel-env"
+          uv pip install --python "$RUNNER_TEMP/wheel-env/bin/python" dist/*.whl
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/wheel-env/bin/sigma-forge" check --root "$GITHUB_WORKSPACE"
+
+      - name: Upload the ATT&CK Navigator layer
         if: matrix.python-version == '3.11'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -89,7 +90,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
-          fetch-depth: 0 # full history so deleted secrets can't hide in old commits
+          fetch-depth: 0 # full history, so a secret deleted later still fails the scan
       - name: Install gitleaks (checksum-verified)
         run: |
           curl -sSL -o gitleaks.tgz \
@@ -98,20 +99,20 @@ jobs:
           tar -xzf gitleaks.tgz -C /usr/local/bin gitleaks
           rm gitleaks.tgz
           gitleaks version
-      - name: Scan full git history for secrets
+      - name: Scan the full git history
         run: gitleaks git . --config .gitleaks.toml --redact --verbose --exit-code 1
-      - name: Canary — a planted secret in the fixture file must still be caught
+      - name: Canary - a planted secret in the fixture file must still be caught
         run: |
-          # Guards against an over-broad allowlist (e.g. a path entry silently
-          # exempting the whole secret-fixture file from scanning). The key is
-          # assembled at runtime so this workflow file itself stays clean.
+          # Guards against an over-broad allowlist (for example a path entry that
+          # silently exempts the whole fixture file). The key is assembled at run
+          # time so this workflow file stays clean.
           tmp="$(mktemp -d)"
           cp -r sample_logs "$tmp/"
           canary="AKIA$(printf 'Q3EGRJ7V2NXM5K9C')"
           printf '{"llm.prompt": "canary aws_key=%s end"}\n' "$canary" \
             >> "$tmp/sample_logs/llm/llm_secret_in_prompt.positive.json"
           if gitleaks dir "$tmp" --config .gitleaks.toml --redact --exit-code 1 >/dev/null 2>&1; then
-            echo "::error::gitleaks did not detect the planted canary secret — the allowlist is over-broad"
+            echo "::error::gitleaks missed the planted canary; the allowlist is over-broad"
             exit 1
           fi
           echo "canary detected as expected"

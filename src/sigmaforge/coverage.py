@@ -1,317 +1,383 @@
-"""ATT&CK coverage: emit a Navigator layer (v4.x JSON) and render a heatmap PNG.
+"""Coverage reporting: an ATT&CK Navigator layer and a static SVG coverage card.
 
-Technique and tactic data are read from each rule's ``tags`` via pySigma (e.g.
-``attack.t1059.001`` -> technique ``T1059.001``; ``attack.execution`` -> the
-Execution tactic). ATLAS tags from the AI/LLM pack (``atlas.t0051`` ->
-``AML.T0051``) are summarised separately because the ATT&CK Navigator only renders
-the enterprise ATT&CK matrix.
+Coverage is derived from rule tags and resolved against the pinned taxonomies
+(:mod:`sigmaforge.taxonomy`), so every technique is placed under its canonical
+tactics. A rule file counts as one detection: a correlation and its base rules
+are credited once, under the correlation's title.
 
-The PNG is rendered directly with matplotlib (Agg backend) — it is NOT a
-screenshot of the web Navigator.
+Both artifacts are rendered deterministically (sorted input, no timestamps) so
+CI can fail when the committed copies drift from the rules.
 """
 
 from __future__ import annotations
 
 import json
-import re
-import shutil
-from collections import defaultdict
-from dataclasses import dataclass, field
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
+from html import escape
 from pathlib import Path
+from typing import Any
 
-import matplotlib
+from . import taxonomy
+from .workspace import RuleFile
 
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-from matplotlib.colors import LinearSegmentedColormap  # noqa: E402
-
-from .convert import iter_rule_files  # noqa: E402
-from .evaluate import load_collection  # noqa: E402
-
-_TECHNIQUE_RE = re.compile(r"^t\d{4}(\.\d{3})?$", re.IGNORECASE)
-_ATLAS_RE = re.compile(r"^t\d{4}(\.\d{3})?$", re.IGNORECASE)
-
-# Canonical technique -> tactic(s) per public ATT&CK data (attack.mitre.org),
-# for the techniques shipped in rules/. A rule may carry several tactic tags
-# (one per technique), so pairing each technique with the rule's whole tactic
-# set mislabels the heatmap (e.g. T1027 is Defense Evasion, never Execution).
-# Unknown techniques fall back to the rule's tactic tags.
-_TECHNIQUE_CANONICAL_TACTICS: dict[str, tuple[str, ...]] = {
-    "T1003.001": ("credential-access",),
-    "T1027": ("defense-evasion",),
-    "T1047": ("execution",),
-    "T1053.005": ("execution", "persistence", "privilege-escalation"),
-    "T1059.001": ("execution",),
-    "T1105": ("command-and-control",),
-    "T1140": ("defense-evasion",),
-    "T1490": ("impact",),
-}
-
-# ATT&CK tactic Sigma-tag shortname (hyphenated) -> (display name, matrix order).
-_TACTICS = {
-    "reconnaissance": ("Reconnaissance", 0),
-    "resource-development": ("Resource Development", 1),
-    "initial-access": ("Initial Access", 2),
-    "execution": ("Execution", 3),
-    "persistence": ("Persistence", 4),
-    "privilege-escalation": ("Privilege Escalation", 5),
-    "defense-evasion": ("Defense Evasion", 6),
-    "credential-access": ("Credential Access", 7),
-    "discovery": ("Discovery", 8),
-    "lateral-movement": ("Lateral Movement", 9),
-    "collection": ("Collection", 10),
-    "command-and-control": ("Command and Control", 11),
-    "exfiltration": ("Exfiltration", 12),
-    "impact": ("Impact", 13),
-}
+NAVIGATOR_VERSION = "5.3.2"
+NAVIGATOR_LAYER_FORMAT = "4.5"
 
 
-@dataclass
-class CoverageData:
-    technique_rules: dict[str, list[str]] = field(default_factory=lambda: defaultdict(list))
-    technique_tactics: dict[str, set[str]] = field(default_factory=lambda: defaultdict(set))
-    atlas_rules: dict[str, list[str]] = field(default_factory=lambda: defaultdict(list))
+@dataclass(frozen=True)
+class Detection:
+    name: str
+    title: str
+    attack: frozenset[str]
+    atlas: frozenset[str]
+    owasp: frozenset[str]
+
+
+@dataclass(frozen=True)
+class Coverage:
+    detections: tuple[Detection, ...]
+
+    def _by_id(self, framework: str) -> dict[str, list[str]]:
+        index: dict[str, list[str]] = {}
+        for detection in self.detections:
+            for identifier in getattr(detection, framework):
+                index.setdefault(identifier, []).append(detection.title)
+        return {k: sorted(v) for k, v in sorted(index.items())}
 
     @property
-    def attack_technique_count(self) -> int:
-        return len(self.technique_rules)
+    def attack(self) -> dict[str, list[str]]:
+        """ATT&CK technique ID -> titles of the detections that cover it."""
+        return self._by_id("attack")
 
     @property
-    def atlas_technique_count(self) -> int:
-        return len(self.atlas_rules)
+    def atlas(self) -> dict[str, list[str]]:
+        return self._by_id("atlas")
 
     @property
-    def max_count(self) -> int:
-        return max((len(v) for v in self.technique_rules.values()), default=1)
+    def owasp(self) -> dict[str, list[str]]:
+        return self._by_id("owasp")
 
 
-def collect_coverage(paths: list[Path] | None = None) -> CoverageData:
-    data = CoverageData()
-    for rule_path in iter_rule_files(paths):
-        for rule in load_collection(rule_path).rules:
-            title = getattr(rule, "title", None) or rule_path.stem
-            tactics: set[str] = set()
-            techniques: set[str] = set()
-            for tag in getattr(rule, "tags", []) or []:
-                ns, name = tag.namespace, tag.name
-                if ns == "attack" and _TECHNIQUE_RE.match(name):
-                    techniques.add(name.upper())
-                elif ns == "attack" and name in _TACTICS:
-                    tactics.add(name)
-                elif ns == "atlas" and _ATLAS_RE.match(name):
-                    data.atlas_rules[f"AML.{name.upper()}"].append(title)
-            for tech in techniques:
-                data.technique_rules[tech].append(title)
-                canonical = _TECHNIQUE_CANONICAL_TACTICS.get(tech)
-                if canonical:
-                    data.technique_tactics[tech].update(set(canonical) & tactics or canonical)
-                else:
-                    data.technique_tactics[tech].update(tactics)
-    return data
-
-
-# --- Navigator layer ------------------------------------------------------
-
-
-def build_layer(data: CoverageData) -> dict:
-    techniques = []
-    for tech, rules in sorted(data.technique_rules.items()):
-        techniques.append(
-            {
-                "techniqueID": tech,
-                "score": len(rules),
-                "comment": "; ".join(sorted(rules)),
-                "enabled": True,
-                "metadata": [{"name": "rules", "value": str(len(rules))}],
-            }
+def collect(rules: Iterable[RuleFile]) -> Coverage:
+    """Aggregate tags per rule file; unknown identifiers are left to lint to report."""
+    attack, atlas = taxonomy.attack(), taxonomy.atlas()
+    detections = []
+    for rule in rules:
+        found: dict[str, set[str]] = {"attack": set(), "atlas": set(), "owasp": set()}
+        for sigma_rule in rule.collection.rules:
+            for tag in sigma_rule.tags:
+                if tag.namespace == "attack":
+                    technique = taxonomy.attack_technique(tag.name)
+                    if technique is not None and technique in attack.techniques:
+                        found["attack"].add(technique)
+                elif tag.namespace == "atlas":
+                    identifier = taxonomy.atlas_id(tag.name)
+                    if identifier is not None and identifier in atlas.techniques:
+                        found["atlas"].add(identifier)
+                elif tag.namespace == "owasp":
+                    risk = taxonomy.owasp_llm_id(tag.name)
+                    if risk is not None:
+                        found["owasp"].add(risk)
+        detections.append(
+            Detection(
+                rule.name,
+                rule.title,
+                frozenset(found["attack"]),
+                frozenset(found["atlas"]),
+                frozenset(found["owasp"]),
+            )
         )
+    return Coverage(tuple(sorted(detections, key=lambda d: d.name)))
+
+
+# --- ATT&CK Navigator layer ------------------------------------------------------
+
+
+def navigator_layer(coverage: Coverage) -> dict[str, Any]:
+    matrix = taxonomy.attack()
+    covered = coverage.attack
+    techniques: list[dict[str, Any]] = [
+        {
+            "techniqueID": technique,
+            "score": len(titles),
+            "comment": "; ".join(titles),
+            "enabled": True,
+            "metadata": [{"name": "detections", "value": str(len(titles))}],
+        }
+        for technique, titles in covered.items()
+    ]
+    # Expand the parents of covered sub-techniques so they are visible on load.
+    parents = sorted({t.split(".")[0] for t in covered if "." in t})
+    techniques += [{"techniqueID": p, "showSubtechniques": True} for p in parents]
     return {
-        "name": "sigma-forge — detection coverage",
-        "versions": {"attack": "14", "navigator": "4.9.5", "layer": "4.5"},
-        "domain": "enterprise-attack",
-        "description": "Coverage generated from sigma-forge rule tags.",
-        "techniques": techniques,
-        "gradient": {
-            "colors": ["#2b3a55ff", "#4cc9f0ff", "#80ffdbff"],
-            "minValue": 0,
-            "maxValue": max(data.max_count, 1),
+        "name": "sigma-forge coverage",
+        "versions": {
+            "attack": matrix.version.split(".")[0],
+            "navigator": NAVIGATOR_VERSION,
+            "layer": NAVIGATOR_LAYER_FORMAT,
         },
-        "legendItems": [{"label": "covered by sigma-forge rules", "color": "#4cc9f0"}],
-        "layout": {"layout": "side", "showName": True, "showID": True},
-        "hideDisabled": True,
+        "domain": "enterprise-attack",
+        "description": (
+            f"ATT&CK Enterprise v{matrix.version} techniques covered by sigma-forge "
+            "detections. Score = number of detections."
+        ),
+        "techniques": sorted(techniques, key=lambda t: str(t["techniqueID"])),
+        "gradient": {
+            "colors": ["#bfeaf7ff", "#1b95c4ff"],
+            "minValue": 0,
+            "maxValue": max((len(v) for v in covered.values()), default=1),
+        },
+        "legendItems": [],
+        "layout": {"layout": "side", "showID": True, "showName": True},
+        "hideDisabled": False,
+        "selectTechniquesAcrossTactics": True,
     }
 
 
-# --- heatmap PNG ----------------------------------------------------------
+def render_layer(coverage: Coverage) -> str:
+    return json.dumps(navigator_layer(coverage), indent=2, ensure_ascii=False) + "\n"
 
 
-def render_heatmap(data: CoverageData, png_path: Path) -> None:
-    png_path = Path(png_path)
-    png_path.parent.mkdir(parents=True, exist_ok=True)
+# --- SVG coverage card -------------------------------------------------------------
 
-    # Order techniques by tactic, then ID.
-    def sort_key(tech: str):
-        tactics = data.technique_tactics.get(tech, set())
-        order = min((_TACTICS[t][1] for t in tactics if t in _TACTICS), default=99)
-        return (order, tech)
+_W = 960
+_PAD = 28
+_GAP = 12
+_FONT = "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace"
+_CHAR = 0.61  # monospace advance width, in em
+_C = {
+    "bg": "#0d1117",
+    "panel": "#161b22",
+    "border": "#30363d",
+    "text": "#c9d1d9",
+    "muted": "#8b949e",
+    "dim": "#484f58",
+    "accent": "#4cc9f0",
+    "accent2": "#80ffdb",
+    "cell": "#10293a",
+    "cell_hot": "#13506b",
+    "off": "#12161c",
+}
 
-    techs = sorted(data.technique_rules, key=sort_key)
-    counts = [len(data.technique_rules[t]) for t in techs]
-    labels = []
-    for t in techs:
-        tac = sorted(
-            data.technique_tactics.get(t, set()), key=lambda x: _TACTICS.get(x, ("", 99))[1]
+
+def _chars(width: float, size: float) -> int:
+    return max(1, int(width / (size * _CHAR)))
+
+
+def _wrap(text: str, max_chars: int, max_lines: int) -> list[str]:
+    lines: list[str] = []
+    for word in text.split():
+        if lines and len(lines[-1]) + 1 + len(word) <= max_chars:
+            lines[-1] += f" {word}"
+        else:
+            lines.append(word)
+    lines = [ln if len(ln) <= max_chars else ln[: max_chars - 1] + "…" for ln in lines]
+    if len(lines) > max_lines:
+        last = lines[max_lines - 1]
+        lines = [
+            *lines[: max_lines - 1],
+            (last[: max_chars - 1] if len(last) >= max_chars else last) + "…",
+        ]
+    return lines
+
+
+def _text(
+    x: float,
+    y: float,
+    content: str,
+    size: int,
+    fill: str,
+    weight: str = "normal",
+    anchor: str = "start",
+) -> str:
+    return (
+        f'<text x="{x:.0f}" y="{y:.0f}" font-size="{size}" fill="{fill}" '
+        f'font-weight="{weight}" text-anchor="{anchor}">{escape(content)}</text>'
+    )
+
+
+def _mix(low: str, high: str, t: float) -> str:
+    a = [int(low[i : i + 2], 16) for i in (1, 3, 5)]
+    b = [int(high[i : i + 2], 16) for i in (1, 3, 5)]
+    return "#" + "".join(f"{round(x + (y - x) * t):02x}" for x, y in zip(a, b, strict=True))
+
+
+def _matrix_section(
+    y: float, heading: str, matrix: taxonomy.Matrix, covered: Mapping[str, list[str]]
+) -> tuple[list[str], float]:
+    """Tactic columns (matrix order, covered tactics only) with one cell per technique."""
+    columns: dict[str, list[str]] = {}
+    for technique in covered:
+        for tactic in matrix.techniques[technique].tactics:
+            columns.setdefault(tactic, []).append(technique)
+    ordered = sorted(columns, key=matrix.tactic_order)
+    out = [_text(_PAD, y + 14, heading, 13, _C["accent2"], "bold")]
+    out.append(
+        _text(_W - _PAD, y + 14, f"{len(covered)} techniques", 12, _C["muted"], anchor="end")
+    )
+    y += 30
+    if not ordered:
+        out.append(_text(_PAD, y + 14, "no techniques tagged", 11, _C["muted"]))
+        return out, y + 28
+
+    width = (_W - 2 * _PAD - _GAP * (len(ordered) - 1)) / len(ordered)
+    most = max(len(v) for v in covered.values())
+    bottom = y
+    for index, tactic_key in enumerate(ordered):
+        x = _PAD + index * (width + _GAP)
+        column = matrix.tactic(tactic_key)
+        name = column.name if column else tactic_key
+        header = _wrap(name, _chars(width - 12, 11), 2)
+        out.append(
+            f'<rect x="{x:.1f}" y="{y:.0f}" width="{width:.1f}" height="36" rx="6" '
+            f'fill="{_C["panel"]}" stroke="{_C["border"]}"/>'
         )
-        tac_name = _TACTICS[tac[0]][0] if tac else "—"
-        labels.append(f"{t}  ·  {tac_name}")
-
-    cmap = LinearSegmentedColormap.from_list("forge", ["#2b3a55", "#4cc9f0", "#80ffdb"])
-    vmax = max(max(counts, default=1), 1)
-
-    plt.rcParams.update({"font.family": "monospace"})
-    fig, ax = plt.subplots(figsize=(9, max(2.4, 0.6 * len(techs) + 1.4)), dpi=160)
-    fig.patch.set_facecolor("#0d1117")
-    ax.set_facecolor("#0d1117")
-
-    y = range(len(techs))
-    colors = [cmap(c / vmax) for c in counts]
-    ax.barh(list(y), counts, color=colors, edgecolor="#0d1117", height=0.62)
-    for i, c in enumerate(counts):
-        ax.text(c + 0.04, i, str(c), va="center", color="#c9d1d9", fontsize=9)
-
-    ax.set_yticks(list(y))
-    ax.set_yticklabels(labels, color="#c9d1d9", fontsize=9)
-    ax.invert_yaxis()
-    ax.set_xlabel("rules covering technique", color="#8b949e", fontsize=9)
-    ax.set_xlim(0, vmax + 0.6)
-    ax.set_xticks(range(0, vmax + 1))
-    ax.tick_params(colors="#8b949e")
-    for spine in ax.spines.values():
-        spine.set_color("#30363d")
-    ax.set_title(
-        f"MITRE ATT&CK Coverage — sigma-forge  ({data.attack_technique_count} techniques)",
-        color="#80ffdb",
-        fontsize=12,
-        pad=12,
-        loc="left",
-    )
-    fig.tight_layout()
-    fig.savefig(png_path, facecolor=fig.get_facecolor())
-    plt.close(fig)
-
-
-@dataclass
-class CoverageSummary:
-    attack_technique_count: int
-    atlas_technique_count: int
-    layer_path: Path
-    png_path: Path
-
-
-def build_coverage(
-    layer_path: Path = Path("docs/attack-layer.json"),
-    png_path: Path = Path("docs/images/attack-layer.png"),
-    paths: list[Path] | None = None,
-) -> CoverageSummary:
-    data = collect_coverage(paths)
-    layer_path = Path(layer_path)
-    layer_path.parent.mkdir(parents=True, exist_ok=True)
-    layer_path.write_text(json.dumps(build_layer(data), indent=2) + "\n", encoding="utf-8")
-    render_heatmap(data, png_path)
-    return CoverageSummary(
-        attack_technique_count=data.attack_technique_count,
-        atlas_technique_count=data.atlas_technique_count,
-        layer_path=layer_path,
-        png_path=Path(png_path),
-    )
-
-
-_SITE_HTML = """<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>sigma-forge — detection coverage</title>
-<style>
-  :root {{ color-scheme: dark; }}
-  body {{ margin: 0; background: #0d1117; color: #c9d1d9;
-         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }}
-  .wrap {{ max-width: 1000px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }}
-  h1 {{ color: #80ffdb; font-size: 2rem; margin: 0 0 .25rem; }}
-  .tag {{ color: #8b949e; margin: 0 0 1.5rem; }}
-  .stats {{ display: flex; gap: 1rem; flex-wrap: wrap; margin: 1.5rem 0; }}
-  .stat {{ background: #161b22; border: 1px solid #30363d; border-radius: 10px;
-           padding: 1rem 1.25rem; min-width: 140px; }}
-  .stat b {{ display: block; color: #4cc9f0; font-size: 1.8rem; }}
-  img {{ width: 100%; border: 1px solid #30363d; border-radius: 10px; background: #0d1117; }}
-  a {{ color: #4cc9f0; }}
-  .links {{ margin-top: 1.5rem; }}
-  footer {{ margin-top: 2.5rem; color: #6e7681; font-size: .85rem; }}
-</style>
-</head>
-<body>
-  <div class="wrap">
-    <h1>sigma-forge</h1>
-    <p class="tag">Detection-as-code coverage &mdash; Sigma &rarr; Splunk SPL/SPL2 &amp; Microsoft
-      Sentinel/Defender KQL, fire-tested in CI.</p>
-    <div class="stats">
-      <div class="stat"><b>{attack}</b> ATT&amp;CK techniques</div>
-      <div class="stat"><b>{atlas}</b> ATLAS techniques</div>
-    </div>
-    <img src="attack-layer.png" alt="MITRE ATT&CK coverage heatmap">
-    <p class="links">
-      &#8595; <a href="attack-layer.json">Download the ATT&amp;CK Navigator layer (v4.x JSON)</a>
-      &nbsp;&bull;&nbsp; <a href="https://github.com/NotACop38/Sigma-Forge">Repository</a>
-    </p>
-    <footer>Generated by <code>sigma-forge coverage --site</code>. ATT&amp;CK and ATLAS are
-      trademarks of The MITRE Corporation.</footer>
-  </div>
-</body>
-</html>
-"""
-
-
-# Everything `build_site` generates; a pre-existing directory holding anything
-# else is not ours to delete.
-_GENERATED_SITE_FILES = frozenset({"index.html", "attack-layer.json", "attack-layer.png"})
-
-
-def _reset_generated_dir(path: Path) -> None:
-    """Remove a pre-existing output path before writing generated artifacts.
-
-    GitHub Pages uploads the complete site directory, so a previous bundle is
-    cleaned to keep stale files from being published, and symlinks are unlinked
-    so writes/uploads can't follow a crafted checkout entry elsewhere. A
-    directory containing anything we didn't generate is refused outright —
-    otherwise `--site docs` (or `--site .`) would recursively delete it.
-    """
-    if path.is_symlink() or path.is_file():
-        path.unlink()
-    elif path.exists():
-        stray = sorted({p.name for p in path.iterdir()} - _GENERATED_SITE_FILES)
-        if stray:
-            raise ValueError(
-                f"refusing to clean {path}: it contains files not generated by "
-                f"`sigma-forge coverage --site` (e.g. {', '.join(stray[:5])}); "
-                "choose an empty or dedicated output directory"
+        for line_no, line in enumerate(header):
+            out.append(_text(x + 8, y + 15 + line_no * 13, line, 11, _C["text"], "bold"))
+        cell_y = y + 44
+        for technique in sorted(columns[tactic_key]):
+            name_lines = _wrap(matrix.display_name(technique), _chars(width - 16, 10), 4)
+            height = 26 + 13 * len(name_lines)
+            count = len(covered[technique])
+            fill = _mix(_C["cell"], _C["cell_hot"], count / most)
+            out.append(
+                f'<rect x="{x:.1f}" y="{cell_y:.0f}" width="{width:.1f}" height="{height}" '
+                f'rx="6" fill="{fill}" stroke="{_C["border"]}"/>'
             )
-        shutil.rmtree(path)
-    path.mkdir(parents=True, exist_ok=False)
+            out.append(
+                f'<rect x="{x:.1f}" y="{cell_y:.0f}" width="3" height="{height}" rx="1.5" '
+                f'fill="{_C["accent"]}"/>'
+            )
+            out.append(_text(x + 10, cell_y + 17, technique, 11, _C["accent"], "bold"))
+            if count > 1:
+                out.append(
+                    _text(x + width - 8, cell_y + 17, f"×{count}", 10, _C["accent2"], anchor="end")
+                )
+            for line_no, line in enumerate(name_lines):
+                out.append(_text(x + 10, cell_y + 32 + line_no * 13, line, 10, _C["text"]))
+            cell_y += height + 8
+        bottom = max(bottom, cell_y)
+    return out, bottom + 6
 
 
-def build_site(site_dir: Path, paths: list[Path] | None = None) -> CoverageSummary:
-    """Build a self-contained static coverage site (index.html + heatmap PNG + layer JSON)."""
-    site_dir = Path(site_dir)
-    _reset_generated_dir(site_dir)
-    summary = build_coverage(
-        layer_path=site_dir / "attack-layer.json",
-        png_path=site_dir / "attack-layer.png",
-        paths=paths,
-    )
-    (site_dir / "index.html").write_text(
-        _SITE_HTML.format(
-            attack=summary.attack_technique_count, atlas=summary.atlas_technique_count
+def _owasp_section(y: float, covered: Mapping[str, list[str]]) -> tuple[list[str], float]:
+    out = [
+        _text(
+            _PAD,
+            y + 14,
+            f"OWASP Top 10 for LLM Applications ({taxonomy.OWASP_LLM_VERSION})",
+            13,
+            _C["accent2"],
+            "bold",
         ),
-        encoding="utf-8",
+        _text(
+            _W - _PAD,
+            y + 14,
+            f"{len(covered)} of {len(taxonomy.OWASP_LLM_TOP10)} risks",
+            12,
+            _C["muted"],
+            anchor="end",
+        ),
+    ]
+    y += 30
+    per_row, height = 5, 52
+    width = (_W - 2 * _PAD - _GAP * (per_row - 1)) / per_row
+    for index, (risk, name) in enumerate(taxonomy.OWASP_LLM_TOP10.items()):
+        x = _PAD + (index % per_row) * (width + _GAP)
+        cell_y = y + (index // per_row) * (height + 8)
+        on = risk in covered
+        out.append(
+            f'<rect x="{x:.1f}" y="{cell_y:.0f}" width="{width:.1f}" height="{height}" rx="6" '
+            f'fill="{_C["cell_hot"] if on else _C["off"]}" stroke="{_C["border"]}"/>'
+        )
+        out.append(_text(x + 10, cell_y + 18, risk, 11, _C["accent"] if on else _C["dim"], "bold"))
+        state = "covered" if on else "not covered"
+        out.append(
+            _text(
+                x + width - 8,
+                cell_y + 18,
+                state,
+                10,
+                _C["accent2"] if on else _C["dim"],
+                anchor="end",
+            )
+        )
+        for line_no, line in enumerate(_wrap(name, _chars(width - 18, 10), 2)):
+            out.append(
+                _text(
+                    x + 10, cell_y + 33 + line_no * 12, line, 10, _C["text"] if on else _C["muted"]
+                )
+            )
+    rows = -(-len(taxonomy.OWASP_LLM_TOP10) // per_row)
+    return out, y + rows * (height + 8) + 6
+
+
+def render_svg(coverage: Coverage) -> str:
+    attack, atlas = taxonomy.attack(), taxonomy.atlas()
+    body: list[str] = [
+        _text(_PAD, 44, "Detection coverage", 22, _C["text"], "bold"),
+        _text(
+            _PAD,
+            66,
+            f"{len(coverage.detections)} detections · ATT&CK Enterprise v{attack.version} · "
+            f"ATLAS {atlas.version} · OWASP LLM Top 10 ({taxonomy.OWASP_LLM_VERSION})",
+            12,
+            _C["muted"],
+        ),
+    ]
+    parts, y = _matrix_section(
+        88, f"MITRE ATT&CK Enterprise v{attack.version}", attack, coverage.attack
     )
-    return summary
+    body += parts
+    body.append(
+        f'<line x1="{_PAD}" y1="{y:.0f}" x2="{_W - _PAD}" y2="{y:.0f}" stroke="{_C["border"]}"/>'
+    )
+    parts, y = _matrix_section(y + 14, f"MITRE ATLAS {atlas.version}", atlas, coverage.atlas)
+    body += parts
+    body.append(
+        f'<line x1="{_PAD}" y1="{y:.0f}" x2="{_W - _PAD}" y2="{y:.0f}" stroke="{_C["border"]}"/>'
+    )
+    parts, y = _owasp_section(y + 14, coverage.owasp)
+    body += parts
+    height = round(y + _PAD - 8)
+
+    summary = (
+        f"{len(coverage.attack)} ATT&CK techniques, {len(coverage.atlas)} ATLAS techniques, "
+        f"and {len(coverage.owasp)} of {len(taxonomy.OWASP_LLM_TOP10)} OWASP LLM risks covered."
+    )
+    return "\n".join(
+        [
+            f'<svg xmlns="http://www.w3.org/2000/svg" width="{_W}" height="{height}" '
+            f'viewBox="0 0 {_W} {height}" role="img" aria-labelledby="title desc" '
+            f'font-family="{_FONT}">',
+            '<title id="title">sigma-forge detection coverage</title>',
+            f'<desc id="desc">{escape(summary)}</desc>',
+            f'<rect width="{_W}" height="{height}" rx="12" fill="{_C["bg"]}"/>',
+            *body,
+            "</svg>",
+            "",
+        ]
+    )
+
+
+# --- files -------------------------------------------------------------------------
+
+
+def artifacts(coverage: Coverage, layer_path: Path, svg_path: Path) -> dict[Path, str]:
+    return {layer_path: render_layer(coverage), svg_path: render_svg(coverage)}
+
+
+def write_artifacts(files: Mapping[Path, str]) -> None:
+    for path, content in files.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+
+
+def stale_artifacts(files: Mapping[Path, str]) -> list[Path]:
+    """Artifacts whose committed content differs from a fresh render."""
+    return [
+        path
+        for path, content in files.items()
+        if not path.is_file() or path.read_text(encoding="utf-8") != content
+    ]

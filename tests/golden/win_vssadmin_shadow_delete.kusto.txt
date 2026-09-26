@@ -1,2 +1,0 @@
-DeviceProcessEvents
-| where FolderPath endswith "\\vssadmin.exe" and (ProcessCommandLine contains "delete" and ProcessCommandLine contains "shadows")

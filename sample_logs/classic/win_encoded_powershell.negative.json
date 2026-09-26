@@ -7,14 +7,26 @@
   },
   {
     "EventID": 1,
-    "Image": "C:\\Windows\\System32\\cmd.exe",
-    "CommandLine": "cmd.exe /c dir C:\\Users",
-    "ParentImage": "C:\\Windows\\explorer.exe"
+    "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    "CommandLine": "powershell.exe -ExecutionPolicy Bypass -File C:\\scripts\\report.ps1",
+    "ParentImage": "C:\\Windows\\System32\\cmd.exe"
   },
   {
     "EventID": 1,
     "Image": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
     "CommandLine": "pwsh -Command Get-Process | Sort-Object CPU",
     "ParentImage": "C:\\Windows\\explorer.exe"
+  },
+  {
+    "EventID": 1,
+    "Image": "C:\\Windows\\System32\\cmd.exe",
+    "CommandLine": "cmd.exe /c dir C:\\Users",
+    "ParentImage": "C:\\Windows\\explorer.exe"
+  },
+  {
+    "EventID": 1,
+    "Image": "C:\\Tools\\encoder.exe",
+    "CommandLine": "encoder.exe -enc input.bin",
+    "ParentImage": "C:\\Windows\\System32\\cmd.exe"
   }
 ]

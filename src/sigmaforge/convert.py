@@ -1,128 +1,85 @@
-"""Convert Sigma rules to Splunk SPL/SPL2 and Microsoft Sentinel/Defender KQL.
+"""Compile Sigma rules to Splunk SPL and Microsoft KQL with pySigma.
 
-Conversion runs entirely through pySigma (no shelling out to the ``sigma`` CLI),
-so results are deterministic and snapshot-testable.
+Conversion runs in-process through pySigma backends (never by shelling out to
+``sigma``), so output is deterministic and snapshot-tested.
 
-Targets (each knows which rule *kinds* it supports):
+Each target pairs a backend with one processing pipeline per log family:
 
-==============  ============================  ====================  ==========================
-Target id       Query language                Backend               Applies to
-==============  ============================  ====================  ==========================
-``splunk``      Splunk SPL                    SplunkBackend         classic, llm, correlation
-``kusto``       Microsoft Defender/XDR KQL    KustoBackend          classic, llm
-``sentinel``    Microsoft Sentinel ASIM KQL   KustoBackend          classic
-==============  ============================  ====================  ==========================
+============  ==========================  ======================  =============================
+Target        Query language              ``windows`` rules       ``llm_app`` rules
+============  ==========================  ======================  =============================
+``splunk``    Splunk SPL                  Sysmon pipeline         ``pipelines/llm_splunk.yml``
+``defender``  Microsoft Defender XDR KQL  Microsoft XDR pipeline  (not applicable)
+``sentinel``  Microsoft Sentinel KQL      Sentinel ASIM pipeline  ``pipelines/llm_sentinel.yml``
+============  ==========================  ======================  =============================
 
-Pipelines are chosen per (target, kind):
-
-* classic ``process_creation`` -> Sysmon (SPL), Microsoft XDR (kusto),
-  Sentinel ASIM (sentinel).
-* custom ``llm_app`` -> the repo-local pipelines under ``pipelines/`` (KQL targets
-  the custom ``LLMAppLogs_CL`` table).
-* correlation rules -> Splunk only; the Kusto backend raises
-  ``NotImplementedError`` for correlations, which we surface as a documented skip.
-
-Note: the Splunk **SPL2** backend was evaluated and intentionally NOT shipped — it
-emits mixed ``AND``/``OR`` ``WHERE`` clauses without grouping parentheses, which
-changes operator precedence and makes the query broader than the Sigma rule.
+Correlation rules compile to Splunk only: the Kusto backend raises
+``NotImplementedError`` for Sigma correlations, so the KQL targets do not apply
+to them. The Splunk SPL2 backend was evaluated and deliberately not shipped: it
+emits mixed ``AND``/``OR`` ``WHERE`` clauses without grouping parentheses,
+which changes operator precedence and broadens the query.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cache
-from pathlib import Path
+from importlib import resources
 
-import yaml
 from sigma.collection import SigmaCollection
+from sigma.conversion.base import Backend
 from sigma.processing.pipeline import ProcessingPipeline
 
-# Repo roots ---------------------------------------------------------------
-_PKG_ROOT = Path(__file__).resolve().parent
-REPO_ROOT = _PKG_ROOT.parent.parent
-RULES_ROOT = REPO_ROOT / "rules"
-PIPELINES_ROOT = REPO_ROOT / "pipelines"
+from .workspace import Family, RuleFile
 
-# Rule kinds.
-CLASSIC, LLM, CORRELATION = "classic", "llm", "correlation"
+
+class ConversionError(RuntimeError):
+    """A backend could not compile a rule."""
 
 
 @dataclass(frozen=True)
 class Target:
-    """A conversion target: a backend + the rule kinds it can express."""
-
     id: str
     label: str
-    lang: str  # syntax-highlighting hint for the CLI
-    kinds: frozenset[str]
+    language: str
+    families: frozenset[Family]
+    correlations: bool
 
-    def applies(self, kind: str) -> bool:
-        return kind in self.kinds
+    def applies_to(self, rule: RuleFile) -> bool:
+        return rule.family in self.families and (self.correlations or rule.correlation is None)
 
 
-TARGETS: dict[str, Target] = {
-    "splunk": Target("splunk", "Splunk SPL", "text", frozenset({CLASSIC, LLM, CORRELATION})),
-    "kusto": Target("kusto", "Microsoft Defender/XDR KQL", "kql", frozenset({CLASSIC, LLM})),
-    "sentinel": Target("sentinel", "Microsoft Sentinel KQL (ASIM)", "kql", frozenset({CLASSIC})),
+TARGETS: Mapping[str, Target] = {
+    t.id: t
+    for t in (
+        Target("splunk", "Splunk SPL", "spl", frozenset(Family), correlations=True),
+        Target("defender", "Defender XDR KQL", "kql", frozenset({Family.WINDOWS}), False),
+        Target("sentinel", "Sentinel KQL", "kql", frozenset(Family), correlations=False),
+    )
 }
-TARGET_IDS = tuple(TARGETS)
-# Backwards-compatible labels mapping used by the CLI.
-TARGET_LABELS = {t.id: t.label for t in TARGETS.values()}
-YAML_SUFFIXES = {".yml", ".yaml"}
 
 
-class ConversionError(RuntimeError):
-    """Raised when a rule cannot be converted by a backend."""
+def targets_for(rule: RuleFile) -> list[Target]:
+    return [t for t in TARGETS.values() if t.applies_to(rule)]
 
 
-@dataclass
-class RuleConversion:
-    """Converted queries for a single rule file, keyed by target id."""
-
-    name: str
-    path: Path
-    kind: str
-    queries: dict[str, str]
-
-    def query(self, target: str) -> str:
-        return self.queries.get(target, "")
-
-
-# --- rule-kind classification --------------------------------------------
-
-
-def _docs(path: Path) -> list[dict]:
-    return [d for d in yaml.safe_load_all(path.read_text(encoding="utf-8")) if isinstance(d, dict)]
-
-
-def rule_kind(path: Path) -> str:
-    """Return ``classic`` / ``llm`` / ``correlation`` for a rule file."""
-    docs = _docs(path)
-    if any("correlation" in d for d in docs):
-        return CORRELATION
-    for d in docs:
-        logsource = d.get("logsource", {}) or {}
-        if (
-            "llm" in (logsource.get("category") or "").lower()
-            or "llm" in (logsource.get("product") or "").lower()
-        ):
-            return LLM
-    return CLASSIC
-
-
-# --- pipeline construction (cached) ---------------------------------------
+def _packaged_pipeline(filename: str) -> ProcessingPipeline:
+    text = resources.files("sigmaforge").joinpath("pipelines", filename).read_text(encoding="utf-8")
+    return ProcessingPipeline.from_yaml(text)
 
 
 @cache
-def _llm_pipeline(target_id: str) -> ProcessingPipeline:
-    fname = "llm_splunk.yml" if target_id == "splunk" else "llm_kusto.yml"
-    pipeline = ProcessingPipeline.from_yaml((PIPELINES_ROOT / fname).read_text(encoding="utf-8"))
-    if target_id in {"kusto", "sentinel"}:
+def _pipeline(target_id: str, family: Family) -> ProcessingPipeline:
+    if family is Family.LLM:
+        if target_id == "splunk":
+            return _packaged_pipeline("llm_splunk.yml")
         from sigma.pipelines.kusto_common.postprocessing import (
             PrependQueryTablePostprocessingTransformation,
             QueryPostprocessingItem,
         )
 
+        pipeline = _packaged_pipeline("llm_sentinel.yml")
         pipeline.postprocessing_items = [
             *pipeline.postprocessing_items,
             QueryPostprocessingItem(
@@ -130,112 +87,53 @@ def _llm_pipeline(target_id: str) -> ProcessingPipeline:
                 identifier="llm_prepend_query_table",
             ),
         ]
-    return pipeline
-
-
-def _pipeline_kind(kind: str, rule_yaml: str) -> str:
-    """Map a rule kind to which field-mapping pipeline family to use (classic|llm).
-
-    Correlation rules inherit the family of their base rule's logsource.
-    """
-    if kind == LLM:
-        return LLM
-    if kind == CORRELATION:
-        for d in yaml.safe_load_all(rule_yaml):
-            if not isinstance(d, dict):
-                continue
-            ls = d.get("logsource", {}) or {}
-            if (
-                "llm" in (ls.get("category") or "").lower()
-                or "llm" in (ls.get("product") or "").lower()
-            ):
-                return LLM
-    return CLASSIC
-
-
-@cache
-def _pipeline(target_id: str, pkind: str) -> ProcessingPipeline:
-    if pkind == LLM:
-        return _llm_pipeline(target_id)
+        return pipeline
     if target_id == "splunk":
         from sigma.pipelines.sysmon import sysmon_pipeline
 
-        return sysmon_pipeline()
-    if target_id == "kusto":
+        pipeline = sysmon_pipeline()
+    elif target_id == "defender":
         from sigma.pipelines.microsoftxdr import microsoft_xdr_pipeline
 
-        return microsoft_xdr_pipeline()
-    from sigma.pipelines.sentinelasim import sentinel_asim_pipeline
+        pipeline = microsoft_xdr_pipeline()
+    else:
+        from sigma.pipelines.sentinelasim import sentinel_asim_pipeline
 
-    return sentinel_asim_pipeline()
+        pipeline = sentinel_asim_pipeline()
+    return pipeline
 
 
 @cache
-def _backend(target_id: str, pkind: str):
-    pipeline = _pipeline(target_id, pkind)
+def _backend(target_id: str, family: Family) -> Backend:
+    pipeline = _pipeline(target_id, family)
     if target_id == "splunk":
         from sigma.backends.splunk import SplunkBackend
 
         return SplunkBackend(processing_pipeline=pipeline)
     from sigma.backends.kusto import KustoBackend
 
+    # KustoBackend annotates processing_pipeline as a dict; it accepts pipelines at runtime.
     return KustoBackend(processing_pipeline=pipeline)  # type: ignore[arg-type]
 
 
-# --- conversion -----------------------------------------------------------
-
-
-def convert_text(rule_yaml: str, target: str, kind: str = CLASSIC) -> str:
-    """Convert a rule document (possibly multi-doc) to one query string for ``target``."""
+def convert(rule: RuleFile, target_id: str) -> str:
+    """Compile ``rule`` for one target, raising :class:`ConversionError` on failure."""
+    target = TARGETS[target_id]
+    if rule.family is None or not target.applies_to(rule):
+        raise ConversionError(f"{target.label} does not apply to {rule.name}")
     try:
-        collection = SigmaCollection.from_yaml(rule_yaml)
-        backend = _backend(target, _pipeline_kind(kind, rule_yaml))
-        queries = backend.convert(collection)
-    except Exception as exc:  # pragma: no cover - surfaced as ConversionError
-        raise ConversionError(f"{target} conversion failed: {exc}") from exc
-    return "\n\n".join(str(q) for q in queries).strip()
+        # Parse afresh: processing pipelines rewrite field names on the rule objects
+        # in place, and the shared RuleFile collection must keep Sigma field names.
+        collection = SigmaCollection.from_yaml(rule.text)
+        queries = _backend(target_id, rule.family).convert(collection)
+    except Exception as exc:  # backends and pipelines raise many exception types
+        raise ConversionError(f"{target.label}: {exc}") from exc
+    query = "\n\n".join(str(q) for q in queries).strip()
+    if not query:
+        raise ConversionError(f"{target.label}: the backend produced no query")
+    return query
 
 
-def convert_file(path: Path) -> RuleConversion:
-    """Convert one rule file to every applicable target."""
-    path = Path(path)
-    try:
-        kind = rule_kind(path)
-        text = path.read_text(encoding="utf-8")
-        queries: dict[str, str] = {}
-        for tid, target in TARGETS.items():
-            if target.applies(kind):
-                queries[tid] = convert_text(text, tid, kind)
-    except ConversionError:
-        raise
-    except Exception as exc:
-        raise ConversionError(f"{path}: failed to load rule: {exc}") from exc
-    return RuleConversion(name=path.stem, path=path, kind=kind, queries=queries)
-
-
-def targets_for(kind: str) -> list[str]:
-    return [tid for tid, t in TARGETS.items() if t.applies(kind)]
-
-
-def iter_rule_files(paths: list[Path] | None = None) -> list[Path]:
-    """Return all YAML rule candidates under the given paths (default: rules/).
-
-    Discovery is intentionally syntax-agnostic: malformed YAML and unsupported
-    Sigma documents must be returned so conversion/lint CI gates can fail on
-    them instead of silently omitting unvalidated rule files.
-    """
-    if not paths:
-        paths = [RULES_ROOT]
-    files: set[Path] = set()
-    for p in paths:
-        p = Path(p)
-        if p.is_dir():
-            for suffix in YAML_SUFFIXES:
-                files.update(p.rglob(f"*{suffix}"))
-        elif p.suffix in YAML_SUFFIXES:
-            files.add(p)
-    return sorted(files)
-
-
-def convert_all(paths: list[Path] | None = None) -> list[RuleConversion]:
-    return [convert_file(f) for f in iter_rule_files(paths)]
+def convert_rule(rule: RuleFile) -> dict[str, str]:
+    """Compile ``rule`` for every applicable target, in :data:`TARGETS` order."""
+    return {target.id: convert(rule, target.id) for target in targets_for(rule)}

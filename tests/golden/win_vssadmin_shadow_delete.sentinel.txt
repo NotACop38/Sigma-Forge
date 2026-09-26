@@ -1,2 +1,2 @@
 imProcessCreate
-| where TargetProcessName endswith "\\vssadmin.exe" and (TargetProcessCommandLine contains "delete" and TargetProcessCommandLine contains "shadows")
+| where TargetProcessName endswith "\\vssadmin.exe" and ((TargetProcessCommandLine contains "delete" and TargetProcessCommandLine contains "shadows") or (TargetProcessCommandLine contains "resize" and TargetProcessCommandLine contains "shadowstorage"))

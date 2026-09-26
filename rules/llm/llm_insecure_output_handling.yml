@@ -1,36 +1,41 @@
-title: Insecure LLM Output (Active Content in Completion)
+title: Active Content or Exfiltration Markup in LLM Completion
 id: e29f3765-04ef-4886-8620-03db7b2f8f96
 status: experimental
 description: >
-  Detects an LLM completion containing active/executable content (HTML script
-  tags, javascript: URIs, event handlers, or SQL statements) that, if rendered
-  or executed by a downstream consumer without sanitisation, could lead to
-  XSS, SSRF, or injection. Maps to OWASP Top 10 for LLM Applications LLM05
-  (Improper Output Handling) and MITRE ATLAS External Harms. Authored against
-  the synthetic llm_app schema.
+  Detects an LLM completion carrying content that a downstream consumer could
+  execute or render unsafely: HTML script and iframe tags, javascript: URIs,
+  inline event handlers, destructive SQL, or a Markdown image whose URL carries
+  a query string, the pattern used to exfiltrate conversation data when a
+  client renders the image. Maps to OWASP LLM05 (Improper Output Handling) and
+  MITRE ATLAS LLM Response Rendering. Authored against the synthetic llm_app
+  schema.
 author: sigma-forge
 date: 2026-06-03
+modified: 2026-09-26
 references:
-  - https://owasp.org/www-project-top-10-for-large-language-model-applications/
-  - https://atlas.mitre.org/techniques/AML.T0048
+  - https://genai.owasp.org/llmrisk/llm052025-improper-output-handling/
+  - https://atlas.mitre.org/techniques/AML.T0077
 logsource:
   product: llm_app
   category: gateway
 detection:
-  selection:
+  selection_active_content:
     llm.completion|contains:
       - '<script'
+      - '<iframe'
       - 'javascript:'
       - 'onerror='
       - 'onload='
-      - '<iframe'
+  selection_sql:
+    llm.completion|contains:
       - 'DROP TABLE'
       - 'UNION SELECT'
-  condition: selection
+  selection_markdown_exfil:
+    llm.completion|re: '!\[[^\]]*\]\(https?://[^)\s]+\?[^)\s]*='
+  condition: 1 of selection_*
 falsepositives:
-  - Developer assistants legitimately returning code samples; review consumer-side handling.
+  - Coding assistants that legitimately return HTML, JavaScript, or SQL samples.
 level: high
 tags:
-  - attack.execution
   - owasp.llm05
-  - atlas.t0048
+  - atlas.t0077

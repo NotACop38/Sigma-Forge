@@ -1,1 +1,4 @@
-llm_completion IN ("*<script*", "*javascript:*", "*onerror=*", "*onload=*", "*<iframe*", "*DROP TABLE*", "*UNION SELECT*")
+sourcetype="llm:gateway"
+| rex field=llm_completion "(?<llm_completionMatch>!\\[[^\\]]*\\]\\(https?://[^)\\s]+\\?[^)\\s]*=)"
+| eval llm_completionCondition=if(isnotnull(llm_completionMatch), "true", "false")
+| search llm_completion IN ("*<script*", "*<iframe*", "*javascript:*", "*onerror=*", "*onload=*") OR llm_completion IN ("*DROP TABLE*", "*UNION SELECT*") OR llm_completionCondition="true"
