@@ -18,13 +18,13 @@ This file is the operating contract for coding agents. Sigma-Forge authors defen
 - Complete the authorized task. A maintenance, review, or documentation request does not require adding detection packs, polishing the whole product, or creating a release.
 - Read only the supporting sections needed for the task, and reuse context already read unless it has changed. `CLAUDE.md` is a compatibility pointer to this operating contract.
 - Use `docs/sigma-subset.md` for the supported rule and evaluation contract, `docs/threat-model.md` for defensive scope, and `src/sigmaforge/llm_schema.py` for the synthetic event schema. Check current rules, fixtures, and tests when changing behavior rather than relying on a duplicated inventory.
-- `pyproject.toml` and `uv.lock` define dependencies; `Makefile` defines local commands; `.github/workflows/ci.yml` defines CI. Use `uv` to manage Sigma plugin packages: `sigma plugin install` assumes pip is available in the environment.
+- `pyproject.toml` and `uv.lock` define dependencies; `Makefile` defines local commands; `.github/workflows/ci.yml` defines CI. Manage every dependency, including pySigma backends and pipelines, with `uv`. ATT&CK and ATLAS tags are validated against the pinned snapshots in `src/sigmaforge/data/`; refresh them only with `make taxonomy`.
 - Make routine, reversible choices within scope. Ask only when a missing decision or authorization materially changes the result and cannot be inferred. Do not ask again for approval already given.
 
 ## Verification and delivery
 
-- Use targeted checks during work, then `make test` for the completed change with no API keys. Every affected rule must lint, convert for its supported backends, and match positive fixtures while rejecting negative fixtures. Keep the documented Kusto correlation limitation explicit.
-- Preserve the workflow's conversion, Navigator-layer freshness, lockfile export, and secret-scan checks. Run the relevant checks when their inputs change; do not regenerate goldens or artifacts merely to hide a failing comparison.
+- Use targeted checks during work (`uv run sigma-forge check <rule>`), then `make test` for the completed change with no API keys. Every affected rule must lint, convert for its supported backends, and match positive fixtures while rejecting negative fixtures. Keep the documented Kusto correlation limitation explicit.
+- Preserve the workflow's rule gate, coverage-artifact freshness, lockfile export, wheel smoke test, and secret-scan checks. Run the relevant checks when their inputs change; do not regenerate goldens or artifacts merely to hide a failing comparison.
 - Reuse passing results while the checked revision and inputs remain unchanged. Rerun affected checks after further changes and report failures or checks that could not run accurately.
 - Review the diff for secrets, private/local traces, real-world data, and unsupported claims before publishing. Keep examples synthetic and preserve the secret-scan allowlist boundaries.
 - Commit only the intended changes and follow the user's delivery instructions. Create tags or releases only when requested.
