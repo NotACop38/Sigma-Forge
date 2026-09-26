@@ -1,84 +1,81 @@
-"""Synthetic LLM gateway/app event schema — the contract for the AI/LLM pack.
+"""Synthetic LLM-gateway event schema: the contract for the ``llm_app`` logsource.
 
-This describes a *fictional, product-agnostic* "LLM gateway" log event. It exists
-so detections in ``rules/llm/`` and their sample logs share one stable shape. No
-real product, field, or index name is used. See ``docs/sigma-subset.md`` for the
-narrative version.
+The schema describes a *fictional, product-agnostic* LLM gateway log event so
+that the AI/LLM rules, their fixtures, and both conversion pipelines agree on
+one shape. It is enforced in two places:
 
-Field reference
----------------
-=========================  ======  ======================================================
-Field                      Type    Meaning
-=========================  ======  ======================================================
-``timestamp``              str     ISO-8601 event time.
-``user.id``                str     Pseudonymous identity of the caller.
-``app.id``                 str     Logical application / tenant making the request.
-``llm.model``              str     Model name the request targeted.
-``llm.prompt``             str     The (user/assistant) prompt text sent to the model.
-``llm.completion``         str     The model's returned completion text.
-``llm.prompt_tokens``      int     Token count of the prompt.
-``llm.completion_tokens``  int     Token count of the completion.
-``request.source_ip``      str     Source IP of the request.
-``tool.name``              str     Name of a tool/function the model was allowed to call.
-``tool.target_host``       str     Host a tool action targeted (for tool-use detections).
-=========================  ======  ======================================================
+* lint rejects ``llm_app`` rules that reference a field outside the schema
+  (a misspelled field compiles fine but never matches in production), and
+* the fire-test rejects ``llm_app`` fixture events with unknown fields or
+  wrongly typed values.
+
+Fields
+------
+=========================  =======  ============================================
+Field                      Type     Meaning
+=========================  =======  ============================================
+``timestamp``              string   ISO-8601 event time
+``user.id``                string   pseudonymous caller identity
+``app.id``                 string   calling application or tenant
+``llm.model``              string   model the request targeted
+``llm.prompt``             string   prompt text sent to the model
+``llm.completion``         string   completion text returned by the model
+``llm.prompt_tokens``      integer  prompt token count
+``llm.completion_tokens``  integer  completion token count
+``request.source_ip``      string   source IP address of the request
+``tool.name``              string   tool/function the agent invoked
+``tool.target_host``       string   host the tool call targeted
+=========================  =======  ============================================
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterator, Mapping
+from datetime import datetime
 from typing import Any
 
-# Canonical, dotted field names (Sigma rules reference these exactly).
-FIELDS: tuple[str, ...] = (
-    "timestamp",
-    "user.id",
-    "app.id",
-    "llm.model",
-    "llm.prompt",
-    "llm.completion",
-    "llm.prompt_tokens",
-    "llm.completion_tokens",
-    "request.source_ip",
-    "tool.name",
-    "tool.target_host",
-)
-
-# JSON-schema-style type map, used for docs and light validation.
-FIELD_TYPES: dict[str, str] = {
-    "timestamp": "string",
-    "user.id": "string",
-    "app.id": "string",
-    "llm.model": "string",
-    "llm.prompt": "string",
-    "llm.completion": "string",
-    "llm.prompt_tokens": "integer",
-    "llm.completion_tokens": "integer",
-    "request.source_ip": "string",
-    "tool.name": "string",
-    "tool.target_host": "string",
+FIELDS: Mapping[str, type] = {
+    "timestamp": str,
+    "user.id": str,
+    "app.id": str,
+    "llm.model": str,
+    "llm.prompt": str,
+    "llm.completion": str,
+    "llm.prompt_tokens": int,
+    "llm.completion_tokens": int,
+    "request.source_ip": str,
+    "tool.name": str,
+    "tool.target_host": str,
 }
 
 
-def sample_event(**overrides: Any) -> dict[str, Any]:
-    """Return a benign baseline LLM-gateway event (nested form), with overrides applied.
+def flatten(event: Mapping[str, Any], prefix: str = "") -> Iterator[tuple[str, Any]]:
+    """Yield ``(dotted_field, value)`` pairs for flat or nested event shapes."""
+    for key, value in event.items():
+        name = f"{prefix}{key}"
+        if isinstance(value, Mapping):
+            yield from flatten(value, f"{name}.")
+        else:
+            yield name, value
 
-    Sample logs in ``sample_logs/llm/`` are stored in *flat dotted* form (e.g.
-    ``"llm.prompt"``); the evaluator resolves both flat and nested shapes.
-    """
-    event: dict[str, Any] = {
-        "timestamp": "2026-06-03T12:00:00Z",
-        "user": {"id": "user-1042"},
-        "app": {"id": "support-assistant"},
-        "llm": {
-            "model": "forge-instruct-1",
-            "prompt": "Summarize the attached release notes for me.",
-            "completion": "Here is a concise summary of the release notes...",
-            "prompt_tokens": 180,
-            "completion_tokens": 220,
-        },
-        "request": {"source_ip": "203.0.113.24"},
-        "tool": {"name": "doc_search", "target_host": "wiki.internal.example"},
-    }
-    for key, value in overrides.items():
-        event[key] = value
-    return event
+
+def validate_event(event: Mapping[str, Any]) -> list[str]:
+    """Return schema violations for one event; an empty list means it conforms."""
+    problems = []
+    for name, value in flatten(event):
+        expected = FIELDS.get(name)
+        if expected is None:
+            problems.append(f"unknown field {name!r}")
+        elif value is not None and (isinstance(value, bool) or not isinstance(value, expected)):
+            problems.append(f"{name!r} must be {expected.__name__}, got {type(value).__name__}")
+        elif name == "timestamp" and isinstance(value, str) and not _is_iso8601(value):
+            problems.append(f"'timestamp' is not ISO-8601: {value!r}")
+    return problems
+
+
+def _is_iso8601(text: str) -> bool:
+    try:
+        datetime.fromisoformat(text)
+    except ValueError:
+        return False
+    return True

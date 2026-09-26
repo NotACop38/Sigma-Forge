@@ -1,106 +1,119 @@
-# AI/LLM Application Threat Model
+# AI/LLM application threat model
 
-This document maps the **AI/LLM detection pack** in `rules/llm/` to two public
-frameworks:
+The AI/LLM pack (`rules/llm/`, `rules/correlation/`) detects attacks on
+applications that reach a language model through a gateway: a proxy that logs
+each request, its completion, token counts, and any tool calls an agent makes.
+The detections map to two public frameworks:
 
-- **[OWASP Top 10 for LLM Applications (2025)](https://owasp.org/www-project-top-10-for-large-language-model-applications/)**
-- **[MITRE ATLAS](https://atlas.mitre.org/)** — Adversarial Threat Landscape for AI Systems
+- [OWASP Top 10 for LLM Applications 2025](https://genai.owasp.org/llm-top-10/)
+- [MITRE ATLAS](https://atlas.mitre.org/) (Adversarial Threat Landscape for
+  AI Systems), release 2026.09
 
-Everything here is authored from those public sources against the **synthetic,
-product-agnostic** `llm_app` log schema (see [`sigma-subset.md`](./sigma-subset.md)
-and `src/sigmaforge/llm_schema.py`). No real product, field, index, or customer
-data is referenced.
+Every rule is written against the synthetic, product-agnostic `llm_app` event
+schema described in [`sigma-subset.md`](sigma-subset.md#synthetic-llm_app-event-schema).
+No real product, field, index, or customer data is referenced. ATLAS IDs are
+validated against the pinned ATLAS release in `src/sigmaforge/data/atlas.json`.
 
-> **Why detections on LLM gateway logs?** As organisations put LLMs behind
-> internal gateways/proxies, those gateways emit structured request/response
-> logs. That telemetry is exactly where prompt-injection attempts, secret
-> leakage, and runaway consumption become observable — making it a natural fit
-> for detection-as-code.
+## Why gateway telemetry
 
----
+Prompt-level attacks leave no host artefacts: an injection, a leaked secret, or
+a runaway completion is only visible in the request and response the gateway
+records. Treating that log as a detection source brings LLM applications into
+the same author, test, and deploy loop as endpoint detections.
 
-## Coverage matrix
+## Coverage
 
-| Rule | OWASP LLM | MITRE ATLAS | Signal |
-|------|-----------|-------------|--------|
-| `llm_prompt_injection_phrases` | **LLM01 – Prompt Injection** | `AML.T0051` (LLM Prompt Injection), `AML.T0051.000` (Direct), `AML.T0054` (LLM Jailbreak) | Known override/jailbreak phrases in `llm.prompt` |
-| `llm_secret_in_prompt` | **LLM02 – Sensitive Information Disclosure** | `AML.T0057` (LLM Data Leakage) | API keys / cloud keys / private-key material in `llm.prompt` or `llm.completion` |
-| `llm_insecure_output_handling` | **LLM05 – Improper Output Handling** | `AML.T0048` (External Harms) | Active content (`<script>`, `javascript:`, SQL) in `llm.completion` |
-| `llm_excessive_agency_tool_abuse` | **LLM06 – Excessive Agency** | `AML.T0053` (AI Agent Tool Invocation) | High-impact `tool.name` against an internal / metadata `tool.target_host` |
-| `llm_system_prompt_leak` | **LLM07 – System Prompt Leakage** | `AML.T0069.002` (System Prompt), `AML.T0057` (LLM Data Leakage) | Completion echoes system-prompt / instruction markers |
-| `llm_token_cost_spike` | **LLM10 – Unbounded Consumption** | `AML.T0034` (Cost Harvesting), `AML.T0029` (Denial of AI Service) | Single request with anomalously high prompt/completion token counts |
+| Rule | OWASP LLM 2025 | MITRE ATLAS | Signal |
+|---|---|---|---|
+| `llm_prompt_injection_phrases` | LLM01 Prompt Injection | AML.T0051.000 LLM Prompt Injection: Direct; AML.T0054 LLM Jailbreak | override or jailbreak phrase in `llm.prompt` |
+| `llm_secret_in_prompt` | LLM02 Sensitive Information Disclosure | AML.T0057 LLM Data Leakage | AWS access key ID, `sk-` API key, or PEM private-key header in the prompt or completion |
+| `llm_insecure_output_handling` | LLM05 Improper Output Handling | AML.T0077 LLM Response Rendering | script or iframe tags, `javascript:` URIs, inline event handlers, destructive SQL, or a Markdown image whose URL carries a query string |
+| `llm_excessive_agency_tool_abuse` | LLM06 Excessive Agency | AML.T0053 AI Agent Tool Invocation | shell, file-deletion, email, or HTTP tool aimed at a loopback, private, internal, or cloud-metadata host |
+| `llm_system_prompt_leak` | LLM07 System Prompt Leakage | AML.T0056 Extract LLM System Prompt | completion echoes system-prompt or instruction markers |
+| `llm_token_cost_spike` | LLM10 Unbounded Consumption | AML.T0034.001 Cost Harvesting: Resource-Intensive Queries; AML.T0029 Denial of AI Service | one request with at least 8,000 prompt or completion tokens |
+| `llm_prompt_injection_burst` (correlation) | LLM01 | AML.T0051.000; AML.T0054 | at least 3 injection attempts by one `user.id` within 10 minutes |
+| `llm_tool_target_fanout` (correlation) | LLM06 | AML.T0053 | request-style tool calls by one `user.id` to at least 5 distinct hosts within 5 minutes |
 
-**Correlation rules** (multi-event aggregation; see [`sigma-subset.md`](./sigma-subset.md#correlation-rules)):
+Not covered: LLM03 Supply Chain, LLM04 Data and Model Poisoning, and LLM08
+Vector and Embedding Weaknesses leave their evidence in build, training-data,
+and retrieval-store telemetry rather than in per-request gateway logs. LLM09
+Misinformation does appear in completions, but it cannot be recognised by
+pattern matching; it needs evaluation pipelines.
 
-| Rule | OWASP LLM | MITRE ATLAS | Signal |
-|------|-----------|-------------|--------|
-| `llm_prompt_injection_burst` | **LLM01** | `AML.T0051` | `event_count` ≥ 3 injection attempts per `user.id` within 10m |
-| `llm_tool_target_fanout` | **LLM06** | `AML.T0053` | `value_count` ≥ 5 distinct `tool.target_host` per `user.id` within 5m |
+## Threats and detections
 
-> ATLAS technique IDs were verified against MITRE's published ATLAS data
-> (`mitre-atlas/atlas-data`) rather than invented.
+### LLM01 Prompt Injection (AML.T0051.000, AML.T0054)
 
----
+An attacker writes instructions into the prompt to override the system prompt,
+disable guardrails, or extract hidden context ("ignore previous instructions",
+"developer mode", "do anything now"). The single-event rule matches a curated
+list of override phrases. The burst correlation raises the same signal to high
+confidence when one user keeps iterating on payloads; its base rule uses the
+standalone rule's phrase list, and a test keeps the two identical.
 
-## Threat narratives
+*Limits:* phrase matching is transparent, testable, and easy to evade with
+paraphrase, encoding, or other languages. Pair it with a semantic classifier;
+this rule is the auditable first layer.
 
-### LLM01 — Prompt Injection (`AML.T0051`, `AML.T0054`)
-An adversary embeds instructions in the prompt to override the system prompt,
-exfiltrate the system prompt, or jailbreak guardrails ("ignore previous
-instructions", "developer mode", "do anything now"). The detection looks for a
-curated set of high-signal override phrases in `llm.prompt`. **Limitations:**
-phrase-matching is intentionally simple and evadable; in production this pairs
-with semantic classifiers — the rule is a transparent, testable first layer.
+### LLM02 Sensitive Information Disclosure (AML.T0057)
 
-### LLM02 — Sensitive Information Disclosure (`AML.T0057`)
-Secrets are pasted into prompts (a developer asking for help with code) or
-leaked back in completions. The detection uses regular expressions for
-well-known **public** credential formats (AWS access key IDs, OpenAI-style
-`sk-` keys, PEM private-key headers) across `llm.prompt` and `llm.completion`.
-**Limitations:** regexes catch known shapes only; high-entropy/custom secrets
-need a dedicated secret scanner.
+Secrets reach the model when users paste them into prompts, and leave it when a
+completion repeats them. The rule applies one regular expression to both
+fields: AWS access key IDs, `sk-` style API keys (including project and
+service-account keys), and PEM private-key headers. Word boundaries stop `sk-`
+from matching inside ordinary words such as "risk-". The expression uses only
+RE2 syntax so that it compiles for KQL.
 
-### LLM05 — Improper Output Handling (`AML.T0048`)
-The model returns active content — `<script>`/`<iframe>` tags, `javascript:`
-URIs, event handlers, or SQL statements — that a downstream consumer might render
-or execute without sanitisation, leading to XSS/SSRF/injection. The detection
-flags such content in `llm.completion`. **Limitations:** the real fix is
-consumer-side output encoding; this catches the most obvious shapes and is
-noisy for code assistants (tune per app).
+*Limits:* only known key shapes are caught; high-entropy or custom secrets need
+a dedicated secret scanner in the gateway.
 
-### LLM06 — Excessive Agency (`AML.T0053`)
-An over-permissioned agent invokes a high-impact tool (shell/command, file
-deletion, email, HTTP) against an internal or cloud-metadata host. The detection
-combines `tool.name` with a `tool.target_host` regex (`*.internal`, RFC1918,
-`169.254.169.254`). **Limitations:** allowlist sanctioned automations; tune the
-host/tool lists to your environment.
+### LLM05 Improper Output Handling (AML.T0077)
 
-### LLM07 — System Prompt Leakage (`AML.T0069.002`, `AML.T0057`)
-The completion discloses the model's own system prompt / instructions (often the
-goal of a successful injection). The detection flags instruction markers in
-`llm.completion`. **Limitations:** phrase-based; pairs well with the injection
-rules and the burst correlation below.
+A completion that a client renders or executes without sanitising can carry
+active content: script and iframe tags, `javascript:` URIs, inline event
+handlers, or SQL. A Markdown image whose URL carries a query string is the
+common exfiltration pattern: when the client fetches the image, the
+conversation data encoded in the URL goes to the attacker's server.
 
-### LLM10 — Unbounded Consumption (`AML.T0034`, `AML.T0029`)
-Cost-harvesting / denial-of-wallet: an attacker drives expensive requests to run
-up spend or degrade availability on a metered model endpoint. The detection
-flags a single request whose `llm.prompt_tokens` or `llm.completion_tokens`
-crosses an illustrative threshold. **Limitations:** a single-event threshold is a
-floor — the correlation rules below add the per-`user.id` aggregation; tune
-thresholds per environment.
+*Limits:* the real fix is output encoding in the consuming application. Coding
+assistants legitimately return HTML and SQL; scope the rule by `app.id`.
 
-### Correlations — bursts & fan-out (`AML.T0051`, `AML.T0053`)
-Single events are noisy; correlations raise confidence. `llm_prompt_injection_burst`
-fires when one `user.id` makes ≥3 injection attempts within 10 minutes, and
-`llm_tool_target_fanout` fires when one `user.id` drives an agent across ≥5
-distinct tool target hosts within 5 minutes (scanning-like behaviour). These are
-fire-tested over multi-event scenarios with `timespan` windows.
+### LLM06 Excessive Agency (AML.T0053)
 
----
+An agent with broad tool permissions can be steered into running commands,
+deleting files, sending email, or making HTTP requests against internal
+systems. The single-event rule flags a high-impact tool aimed at a loopback,
+RFC 1918, `.internal`/`.local`, or cloud instance-metadata host
+(`169.254.169.254`). The fan-out correlation flags an agent that reaches many
+distinct hosts in a short window, which looks like scanning driven through the
+agent.
 
-## What this pack is *not*
-- Not a guardrail or runtime filter — these are **detections** over telemetry.
-- Not exhaustive of the OWASP LLM Top 10; it covers six representative,
-  log-observable risks plus two correlations, end-to-end (authored → linted →
-  converted → fire-tested).
-- Not tuned to any real product. Thresholds and phrase lists are starting points.
+*Limits:* allowlist sanctioned automations, and tune the tool and host lists to
+the agent's real permissions.
+
+### LLM07 System Prompt Leakage (AML.T0056)
+
+A leaked system prompt exposes business logic, guardrail wording, and
+sometimes credentials, and it is often the first payoff of a successful
+injection. The rule flags completions that echo instruction markers such as
+"BEGIN SYSTEM PROMPT" or "my instructions are".
+
+*Limits:* phrase-based; it pairs well with the injection rules above.
+
+### LLM10 Unbounded Consumption (AML.T0034.001, AML.T0029)
+
+Resource-intensive requests drive up spend on a metered model (denial of
+wallet) or degrade the service for other users. The rule flags a single request
+with at least 8,000 prompt or completion tokens.
+
+*Limits:* the threshold is illustrative; set it from the application's
+baseline. Sustained abuse by many small requests needs a rate-based
+correlation.
+
+## Scope
+
+- These are detections over telemetry, not a runtime guardrail or filter.
+- They cover six OWASP LLM risks and two correlations, each authored, linted,
+  compiled to SPL and KQL, and fire-tested against synthetic events.
+- Thresholds, phrase lists, and host patterns are starting points, drawn from
+  public sources; tune them before production use.

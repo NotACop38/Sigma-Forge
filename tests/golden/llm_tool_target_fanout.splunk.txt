@@ -1,4 +1,4 @@
-tool_name="*_request"
+sourcetype="llm:gateway" tool_name="*_request"
 
 | bin _time span=5m
 | stats dc(tool_target_host) as value_count by _time user_id

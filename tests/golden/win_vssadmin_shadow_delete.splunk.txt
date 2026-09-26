@@ -1,1 +1,1 @@
-EventID=1 Image="*\\vssadmin.exe" CommandLine="*delete*" CommandLine="*shadows*"
+EventID=1 Image="*\\vssadmin.exe" (CommandLine="*delete*" CommandLine="*shadows*") OR (CommandLine="*resize*" CommandLine="*shadowstorage*")

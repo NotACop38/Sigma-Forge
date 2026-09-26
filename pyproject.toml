@@ -1,17 +1,28 @@
 [project]
 name = "sigma-forge"
-version = "0.1.0"
-description = "Detection-as-code starter: Sigma -> Splunk SPL & Microsoft Sentinel KQL, fire-tested in CI, with MITRE ATT&CK + ATLAS coverage and an LLM/AI-app threat pack."
+version = "0.2.0"
+description = "Detection-as-code for Sigma: lint, convert to Splunk SPL and Microsoft KQL, and fire-test every rule against synthetic logs, with an AI/LLM-gateway detection pack."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+# Code is MIT; the bundled taxonomy snapshots carry MITRE's ATT&CK terms and ATLAS's
+# Apache-2.0 license (src/sigmaforge/data/NOTICE.md); rules/ in the sdist is DRL 1.1.
+license = "MIT AND Apache-2.0 AND LicenseRef-MITRE-ATTACK-Terms AND LicenseRef-DRL-1.1"
+license-files = [
+    "LICENSE",
+    "rules/LICENSE",
+    "src/sigmaforge/data/NOTICE.md",
+    "src/sigmaforge/data/LICENSE-APACHE-2.0.txt",
+]
 authors = [{ name = "sigma-forge" }]
 classifiers = [
     "Development Status :: 4 - Beta",
+    "Environment :: Console",
     "Intended Audience :: Information Technology",
-    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Security",
     "Typing :: Typed",
 ]
@@ -21,20 +32,18 @@ keywords = [
     "sigma",
     "splunk",
     "kql",
+    "microsoft-sentinel",
     "mitre-attack",
     "mitre-atlas",
     "llm-security",
 ]
 dependencies = [
-    "matplotlib>=3.10.9",
-    "openai>=2.40.0",
     "pysigma>=1.3.3",
     "pysigma-backend-kusto>=1.0.1",
     "pysigma-backend-splunk>=2.1.0",
     "pysigma-pipeline-sysmon>=2.0.0",
     "pyyaml>=6.0.3",
     "rich>=15.0.0",
-    "sigma-cli>=3.0.2",
     "typer>=0.26.7",
 ]
 
@@ -42,6 +51,7 @@ dependencies = [
 Homepage = "https://github.com/NotACop38/Sigma-Forge"
 Repository = "https://github.com/NotACop38/Sigma-Forge"
 Issues = "https://github.com/NotACop38/Sigma-Forge/issues"
+Changelog = "https://github.com/NotACop38/Sigma-Forge/blob/main/CHANGELOG.md"
 
 [project.scripts]
 sigma-forge = "sigmaforge.cli:app"
@@ -51,35 +61,65 @@ dev = [
     "mypy>=2.1.0",
     "pre-commit>=4.6.0",
     "pytest>=9.0.3",
+    "pytest-cov>=7.0.0",
     "ruff>=0.15.15",
+    "types-pyyaml>=6.0.12",
 ]
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sigmaforge"]
 
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/rules",
+    "/sample_logs",
+    "/docs",
+    "/scripts",
+    "/CHANGELOG.md",
+    "/LICENSE",
+]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-src = ["src", "tests"]
+src = ["src", "tests", "scripts"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "W"]
-# B008: typer uses Argument()/Option() calls as parameter defaults by design.
-ignore = ["E501", "B008"]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "PIE", "PT", "RUF", "PERF"]
+# B008: typer declares Argument()/Option() as parameter defaults by design.
+ignore = ["B008"]
+# Deliberate typography in terminal and SVG output (minus, en dash, multiplication sign).
+allowed-confusables = ["−", "–", "×"]
 
 [tool.mypy]
 python_version = "3.11"
-packages = ["sigmaforge"]
+strict = true
+files = ["src/sigmaforge", "tests", "scripts"]
 mypy_path = "src"
-ignore_missing_imports = true
-warn_unused_ignores = false
-disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+# pySigma backend and pipeline plugins re-export their public API implicitly.
+module = ["sigma.backends.*", "sigma.pipelines.*"]
+implicit_reexport = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = ["-q", "--strict-markers", "--strict-config"]
 pythonpath = ["src"]
+filterwarnings = ["error"]
+
+[tool.coverage.run]
+branch = true
+source = ["sigmaforge"]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+skip_covered = true
+exclude_also = ["if __name__ == .__main__.:", "raise NotImplementedError"]

@@ -1,50 +1,47 @@
-# sigma-forge — developer task runner.
-# Everything runs through `uv` so a clean clone needs no manual venv steps.
+# sigma-forge developer tasks. Everything runs through uv, so a fresh clone needs
+# only `make install`. `make test` runs the same gates as CI.
 .DEFAULT_GOAL := help
 RUN := uv run
-PROMPT ?=
-export PROMPT
 
-.PHONY: help install lint typecheck convert evaluate coverage test golden requirements draft clean
+.PHONY: help install lint typecheck check test coverage golden docs requirements taxonomy clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
-		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
+		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-13s\033[0m %s\n", $$1, $$2}'
 
-install: ## Sync the environment (deps + sigma plugins)
+install: ## Create the virtualenv with runtime and dev dependencies
 	uv sync
 
-lint: ## Run ruff (lint + format check) over src + tests
-	$(RUN) ruff check src tests
-	$(RUN) ruff format --check src tests
+lint: ## Ruff lint and format check
+	$(RUN) ruff check src tests scripts
+	$(RUN) ruff format --check src tests scripts
 
-typecheck: ## Run mypy over the package
+typecheck: ## Strict mypy over src, tests, and scripts
 	$(RUN) mypy
 
-convert: ## Convert every rule to Splunk SPL and Sentinel KQL
-	$(RUN) sigma-forge convert --all
+check: ## The rule gate: lint, convert, and fire-test every rule
+	$(RUN) sigma-forge check
 
-evaluate: ## Fire-test every rule against its synthetic sample logs
-	$(RUN) sigma-forge evaluate --all
+test: lint typecheck ## All CI gates: lint, types, tests (>=90% branch coverage), rule gate, artifacts
+	$(RUN) pytest --cov
+	$(RUN) sigma-forge check
+	$(RUN) sigma-forge coverage --check
 
-coverage: ## Emit the ATT&CK Navigator layer JSON + render the heatmap PNG
-	$(RUN) sigma-forge coverage --layer docs/attack-layer.json --png docs/images/attack-layer.png
+coverage: ## Regenerate the ATT&CK Navigator layer and the SVG coverage card
+	$(RUN) sigma-forge coverage
 
-golden: ## Regenerate golden SPL/KQL conversion snapshots
+golden: ## Regenerate conversion snapshots after an intended change (review the diff)
 	$(RUN) python -m tests.regen_golden
 
-requirements: ## Regenerate requirements.txt (pip fallback) from uv.lock
+docs: coverage ## Regenerate every generated image under docs/
+	$(RUN) python scripts/render_check_svg.py
+
+requirements: ## Re-export requirements.txt (pip fallback) from uv.lock
 	uv export --frozen --no-hashes --no-emit-project -o requirements.txt
 
-test: ## Run the full test suite (lint, typecheck, convert, evaluate) — same gates as CI
-	$(RUN) ruff check src tests
-	$(RUN) ruff format --check src tests
-	$(RUN) mypy
-	$(RUN) pytest
+taxonomy: ## Refresh the pinned ATT&CK/ATLAS snapshots (network; maintainers only)
+	$(RUN) python scripts/update_taxonomy.py
 
-draft: ## Draft a rule from a threat sentence via a LOCAL LLM (needs a running endpoint)
-	$(RUN) sigma-forge draft "$$PROMPT"
-
-clean: ## Remove caches and build artifacts
-	rm -rf .pytest_cache .mypy_cache .ruff_cache build dist *.egg-info
+clean: ## Remove caches and build output
+	rm -rf .pytest_cache .mypy_cache .ruff_cache .coverage htmlcov build dist
 	find . -type d -name __pycache__ -not -path './.venv/*' -exec rm -rf {} +

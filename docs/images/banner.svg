@@ -78,9 +78,9 @@
   </text>
 
   <!-- tagline -->
-  <text x="216" y="182" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace"
-        font-size="25" fill="#8b949e" letter-spacing="0.5">
-    detection-as-code &#8226; Sigma &#8594; Splunk SPL &amp; Sentinel KQL &#8226; proven in CI
+  <text x="216" y="180" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace"
+        font-size="22" fill="#8b949e" letter-spacing="0.3">
+    Sigma &#8594; Splunk SPL + Microsoft KQL &#8226; every rule fire-tested
   </text>
 
   <!-- pipeline ribbon -->

@@ -1,39 +1,30 @@
-"""Fire-test Sigma rules against synthetic JSON events.
+"""Evaluate parsed Sigma rules and correlations against JSON events, offline.
 
-The rule is parsed by pySigma (``SigmaCollection.from_yaml``) and we evaluate the
-*parsed* condition/detection tree — we never re-implement the YAML parser. pySigma
-resolves the condition grammar (``sel and not filt``, ``1 of sel_*``,
-``all of sel_*``, keywords, value lists = OR, field maps = AND) into a tree of
-AND/OR/NOT/leaf expressions; this module evaluates that tree against an event.
+Rules are parsed by pySigma; this module never re-implements the YAML or
+condition grammar. pySigma resolves each condition (``sel and not filter``,
+``1 of sel_*``, value lists, field maps) into an AND/OR/NOT tree whose leaves
+pair a field with a typed value. :class:`RuleMatcher` compiles that tree once
+into predicates and validates every leaf up front, so an unsupported construct
+fails loudly even in a branch that short-circuit evaluation would never reach.
 
-Supported leaf semantics (documented in ``docs/sigma-subset.md``):
-
-* field equals (plain string / number)
-* ``contains`` / ``startswith`` / ``endswith`` / ``all`` (wildcard SigmaStrings)
-* ``re`` (regular expression)
-* ``null`` (field absent or null)
-* numeric comparisons (``gt`` / ``gte`` / ``lt`` / ``lte`` / ``neq``)
-* keywords (free-text search across all event values)
-
-(Plain ``base64`` values are encoded by pySigma at parse time and arrive here as
-ordinary strings, so they match the encoded literal.) Anything else — e.g.
-``base64offset``, ``cidr``, ``fieldref`` — raises
-:class:`UnsupportedFeatureError` with a clear message rather than guessing.
+The supported subset and its exact semantics are specified in
+``docs/sigma-subset.md``. Anything outside it raises
+:class:`UnsupportedFeatureError` instead of guessing.
 """
 
 from __future__ import annotations
 
-import json
+import enum
+import ipaddress
+import math
 import multiprocessing as mp
 import re
-from collections import Counter
-from dataclasses import dataclass
-from datetime import datetime
+from collections import Counter, defaultdict
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from datetime import UTC, datetime
 from functools import cache
-from pathlib import Path
 from typing import Any, NoReturn
 
-from sigma.collection import SigmaCollection
 from sigma.conditions import (
     ConditionAND,
     ConditionFieldEqualsValueExpression,
@@ -41,437 +32,481 @@ from sigma.conditions import (
     ConditionOR,
     ConditionValueExpression,
 )
-from sigma.correlations import SigmaCorrelationCondition, SigmaCorrelationRule, SigmaCorrelationType
-from sigma.correlations import SigmaCorrelationConditionOperator as CorrOp
+from sigma.correlations import (
+    SigmaCorrelationCondition,
+    SigmaCorrelationRule,
+    SigmaCorrelationType,
+)
+from sigma.correlations import SigmaCorrelationConditionOperator as CorrelationOp
 from sigma.rule import SigmaRule
 from sigma.types import (
+    SigmaBool,
+    SigmaCasedString,
+    SigmaCIDRExpression,
     SigmaCompareExpression,
+    SigmaExists,
+    SigmaExpansion,
     SigmaNull,
     SigmaNumber,
     SigmaRegularExpression,
+    SigmaRegularExpressionFlag,
     SigmaString,
     SpecialChars,
 )
 
-from .convert import REPO_ROOT, iter_rule_files
+Event = Mapping[str, Any]
+Predicate = Callable[[Event], bool]
+ValueTest = Callable[[Any], bool]
 
 
 class UnsupportedFeatureError(NotImplementedError):
-    """Raised when a rule uses a construct the evaluator deliberately does not support."""
+    """The rule, or its fixtures, use a construct the evaluator deliberately rejects."""
 
+
+# --- field resolution --------------------------------------------------------
+
+_MISSING: Any = object()
+
+
+def resolve_field(event: Event, field: str) -> Any:
+    """Look up ``field`` as a flat dotted key first, then as a nested path.
+
+    Returns the module-private ``_MISSING`` sentinel when the field is absent;
+    use :func:`is_absent` to test for it.
+    """
+    if field in event:
+        return event[field]
+    node: Any = event
+    for part in field.split("."):
+        if not isinstance(node, Mapping) or part not in node:
+            return _MISSING
+        node = node[part]
+    return node
+
+
+def is_absent(value: Any) -> bool:
+    return value is _MISSING
+
+
+# --- regular expressions (rule-controlled, so bounded in time) -------------
 
 REGEX_TIMEOUT_SECONDS = 0.25
-# Budget for the worker process to boot before the regex clock starts. Forked
-# workers are ready almost instantly, but spawn-based platforms (Windows;
-# macOS's default) re-import this module in the child, which alone can exceed
-# REGEX_TIMEOUT_SECONDS and would otherwise fail every |re evaluation.
+# Spawn-based platforms re-import this module in the worker, which alone can take
+# longer than the regex budget; the start-up handshake is timed separately.
 WORKER_STARTUP_TIMEOUT_SECONDS = 15.0
 
+_REGEX_FLAGS = {
+    SigmaRegularExpressionFlag.IGNORECASE: re.IGNORECASE,
+    SigmaRegularExpressionFlag.MULTILINE: re.MULTILINE,
+    SigmaRegularExpressionFlag.DOTALL: re.DOTALL,
+}
 
-def _regex_search_worker(pattern: str, target: str, conn: Any) -> None:
-    """Run a rule-controlled regex in a disposable child process."""
+
+def _regex_worker(pattern: str, flags: int, target: str, conn: Any) -> None:
     try:
         conn.send(("ready", None))
-        conn.send(("ok", re.search(pattern, target) is not None))
-    except re.error as exc:
-        conn.send(("error", str(exc)))
+        conn.send(("ok", re.search(pattern, target, flags) is not None))
     finally:
         conn.close()
 
 
-def _terminate(proc: Any, conn: Any, message: str) -> NoReturn:
+def _abort(proc: Any, conn: Any, message: str) -> NoReturn:
     proc.terminate()
     proc.join()
     conn.close()
     raise UnsupportedFeatureError(message)
 
 
-def _safe_regex_search(pattern: str, target: str) -> bool:
-    """Evaluate untrusted Sigma regexes with a hard timeout."""
+def _bounded_search(pattern: str, flags: int, target: str) -> bool:
+    """``re.search`` in a disposable process, killed after REGEX_TIMEOUT_SECONDS.
+
+    Python's ``re`` has no timeout, and a rule regex with catastrophic
+    backtracking would otherwise hang the gate (e.g. on a drafted rule).
+    """
     ctx = mp.get_context("fork") if "fork" in mp.get_all_start_methods() else mp.get_context()
-    parent_conn, child_conn = ctx.Pipe(duplex=False)
-    proc = ctx.Process(target=_regex_search_worker, args=(pattern, target, child_conn))
-    proc.daemon = True
+    parent, child = ctx.Pipe(duplex=False)
+    proc = ctx.Process(target=_regex_worker, args=(pattern, flags, target, child), daemon=True)
     proc.start()
-    child_conn.close()
-
-    # The "ready" handshake separates interpreter start-up cost from the
-    # regex-evaluation budget, so the timeout measures only the search itself.
+    child.close()
     try:
-        if not parent_conn.poll(WORKER_STARTUP_TIMEOUT_SECONDS):
-            _terminate(proc, parent_conn, "regular expression worker failed to start")
-        parent_conn.recv()
-
-        if not parent_conn.poll(REGEX_TIMEOUT_SECONDS):
-            _terminate(
+        if not parent.poll(WORKER_STARTUP_TIMEOUT_SECONDS):
+            _abort(proc, parent, "regular expression worker failed to start")
+        parent.recv()
+        if not parent.poll(REGEX_TIMEOUT_SECONDS):
+            _abort(
                 proc,
-                parent_conn,
+                parent,
                 f"regular expression evaluation timed out after {REGEX_TIMEOUT_SECONDS:.2f}s",
             )
-        status, payload = parent_conn.recv()
+        _, matched = parent.recv()
     except EOFError:
-        _terminate(proc, parent_conn, "regular expression evaluation failed")
-
-    parent_conn.close()
+        _abort(proc, parent, "regular expression worker exited unexpectedly")
+    parent.close()
     proc.join()
-    if status == "error":
-        raise UnsupportedFeatureError(f"invalid regular expression: {payload}")
-    return bool(payload)
+    return bool(matched)
 
 
-def _sigma_regex_to_plain(value: SigmaRegularExpression) -> str:
-    regexp = value.regexp
-    to_plain = getattr(regexp, "to_plain", None)
-    if callable(to_plain):
-        return str(to_plain())
-    return str(regexp)
+def _regex_test(value: SigmaRegularExpression) -> ValueTest:
+    pattern = str(value.regexp.to_plain())
+    # re.ASCII aligns \d, \w, \s, and \b with PCRE (Splunk) and RE2 (KQL) defaults.
+    flags = re.ASCII
+    for flag in value.flags:
+        flags |= _REGEX_FLAGS[flag]
+    try:
+        re.compile(pattern, flags)
+    except (re.error, ValueError) as exc:  # ValueError: e.g. (?u) conflicts with re.ASCII
+        raise UnsupportedFeatureError(f"invalid regular expression {pattern!r}: {exc}") from exc
+    return lambda v: _bounded_search(pattern, flags, str(v))
 
 
-# --- field resolution -----------------------------------------------------
-
-
-def _resolve_field(event: dict[str, Any], field: str) -> tuple[bool, Any]:
-    """Resolve a (possibly dotted) field name. Returns (present, value)."""
-    if field in event:
-        return True, event[field]
-    node: Any = event
-    for part in field.split("."):
-        if isinstance(node, dict) and part in node:
-            node = node[part]
-        else:
-            return False, None
-    return True, node
-
-
-# --- SigmaString -> regex --------------------------------------------------
-
-
-def _sigmastring_to_regex(value: SigmaString) -> re.Pattern[str]:
-    """Build an anchored, case-insensitive regex from a SigmaString's parts."""
-    return _regex_from_parts(tuple(value.s))
+# --- Sigma strings -------------------------------------------------------------
 
 
 @cache
-def _regex_from_parts(parts: tuple[Any, ...]) -> re.Pattern[str]:
-    out = ["^"]
-    for part in parts:
-        if part is SpecialChars.WILDCARD_MULTI:
-            out.append(".*")
-        elif part is SpecialChars.WILDCARD_SINGLE:
-            out.append(".")
-        elif isinstance(part, str):
-            out.append(re.escape(part))
-        else:  # pragma: no cover - placeholders (%var%) are outside the supported subset
-            raise UnsupportedFeatureError("placeholder expansion is not supported")
-    out.append("$")
-    return re.compile("".join(out), re.IGNORECASE | re.DOTALL)
-
-
-# --- leaf matching ---------------------------------------------------------
-
-
-def _match_value(event_value: Any, sigma_value: Any) -> bool:
-    if isinstance(event_value, list):
-        return any(_match_value(v, sigma_value) for v in event_value)
-
-    if isinstance(sigma_value, SigmaNull):
-        return event_value is None
-
-    if isinstance(sigma_value, SigmaString):
-        if event_value is None:
-            return False
-        return _sigmastring_to_regex(sigma_value).match(str(event_value)) is not None
-
-    if isinstance(sigma_value, SigmaRegularExpression):
-        if event_value is None:
-            return False
-        return _safe_regex_search(_sigma_regex_to_plain(sigma_value), str(event_value))
-
-    if isinstance(sigma_value, SigmaNumber):
-        try:
-            return float(event_value) == float(sigma_value.to_plain())  # type: ignore[arg-type]
-        except (TypeError, ValueError):
-            return False
-
-    if isinstance(sigma_value, SigmaCompareExpression):
-        try:
-            left = float(event_value)
-            right = float(sigma_value.number.to_plain())  # type: ignore[arg-type]
-        except (TypeError, ValueError):
-            return False
-        ops = SigmaCompareExpression.CompareOperators
-        return {
-            ops.GT: left > right,
-            ops.GTE: left >= right,
-            ops.LT: left < right,
-            ops.LTE: left <= right,
-            ops.NEQ: left != right,
-        }[sigma_value.op]
-
-    raise UnsupportedFeatureError(
-        f"unsupported value type in detection: {type(sigma_value).__name__}"
+def _wildcard_regex(parts: tuple[str | SpecialChars, ...], cased: bool) -> re.Pattern[str]:
+    body = "".join(
+        ".*"
+        if part is SpecialChars.WILDCARD_MULTI
+        else "."
+        if part is SpecialChars.WILDCARD_SINGLE
+        else re.escape(str(part))
+        for part in parts
     )
+    return re.compile(body, re.DOTALL if cased else re.DOTALL | re.IGNORECASE)
 
 
-def _match_keyword(event: dict[str, Any], sigma_value: Any) -> bool:
-    """Keyword search: match the value against any scalar value in the event."""
-    if not isinstance(sigma_value, SigmaString):
-        raise UnsupportedFeatureError("keyword search supports string values only")
-    pattern = _sigmastring_to_regex(sigma_value)
-
-    def _scan(node: Any) -> bool:
-        if isinstance(node, dict):
-            return any(_scan(v) for v in node.values())
-        if isinstance(node, list):
-            return any(_scan(v) for v in node)
-        return node is not None and pattern.match(str(node)) is not None
-
-    return _scan(event)
+def _string_test(value: SigmaString, *, anchored: bool = True) -> ValueTest:
+    """Case-insensitive (unless ``|cased``) wildcard match: whole value, or anywhere."""
+    parts = tuple(value.s)
+    if not all(isinstance(part, str | SpecialChars) for part in parts):
+        raise UnsupportedFeatureError("placeholders (%name%) need a processing pipeline to expand")
+    pattern = _wildcard_regex(parts, isinstance(value, SigmaCasedString))
+    if anchored:
+        return lambda v: pattern.fullmatch(str(v)) is not None
+    return lambda v: pattern.search(str(v)) is not None
 
 
-# --- recursive tree evaluation --------------------------------------------
+# --- scalar value tests --------------------------------------------------------
 
 
-def _eval(node: Any, event: dict[str, Any]) -> bool:
+def _number(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return None if math.isnan(number) else number
+
+
+def _number_test(value: SigmaNumber) -> ValueTest:
+    expected = _number(value.to_plain())
+
+    def test(v: Any) -> bool:
+        actual = _number(v)
+        return actual is not None and actual == expected
+
+    return test
+
+
+_COMPARATORS: dict[Any, Callable[[float, float], bool]] = {
+    SigmaCompareExpression.CompareOperators.GT: lambda a, b: a > b,
+    SigmaCompareExpression.CompareOperators.GTE: lambda a, b: a >= b,
+    SigmaCompareExpression.CompareOperators.LT: lambda a, b: a < b,
+    SigmaCompareExpression.CompareOperators.LTE: lambda a, b: a <= b,
+    SigmaCompareExpression.CompareOperators.NEQ: lambda a, b: a != b,
+}
+
+
+def _compare_test(value: SigmaCompareExpression) -> ValueTest:
+    threshold = _number(value.number.to_plain())
+    compare = _COMPARATORS.get(value.op)
+    if threshold is None or compare is None:
+        raise UnsupportedFeatureError(f"unsupported numeric comparison: {value}")
+
+    def test(v: Any) -> bool:
+        actual = _number(v)
+        return actual is not None and compare(actual, threshold)
+
+    return test
+
+
+def _bool_test(value: SigmaBool) -> ValueTest:
+    expected = value.boolean
+
+    def test(v: Any) -> bool:
+        if isinstance(v, bool):
+            return v is expected
+        return isinstance(v, str) and v.strip().lower() == str(expected).lower()
+
+    return test
+
+
+def _cidr_test(value: SigmaCIDRExpression) -> ValueTest:
+    network = value.network
+
+    def test(v: Any) -> bool:
+        try:
+            return ipaddress.ip_address(str(v).strip()) in network
+        except ValueError:
+            return False
+
+    return test
+
+
+def _scalar_test(value: Any) -> ValueTest:
+    if isinstance(value, SigmaString):  # includes SigmaCasedString
+        return _string_test(value)
+    if isinstance(value, SigmaRegularExpression):
+        return _regex_test(value)
+    if isinstance(value, SigmaCompareExpression):
+        return _compare_test(value)
+    if isinstance(value, SigmaNumber):
+        return _number_test(value)
+    if isinstance(value, SigmaBool):
+        return _bool_test(value)
+    if isinstance(value, SigmaCIDRExpression):
+        return _cidr_test(value)
+    if isinstance(value, SigmaExpansion):  # windash, base64offset: any expanded value
+        tests = [_scalar_test(v) for v in value.values]
+        return lambda v: any(t(v) for t in tests)
+    raise UnsupportedFeatureError(f"unsupported value type in detection: {type(value).__name__}")
+
+
+# --- condition tree compilation ----------------------------------------------
+
+
+def _has_value(value: Any) -> bool:
+    if is_absent(value) or value is None:
+        return False
+    return not (isinstance(value, str | list | dict) and len(value) == 0)
+
+
+def _is_null(value: Any) -> bool:
+    return value is None or is_absent(value)
+
+
+def _field_predicate(field: str, value: Any) -> Predicate:
+    if isinstance(value, SigmaNull):
+        return lambda e: _is_null(resolve_field(e, field))
+    if isinstance(value, SigmaExists):
+        expected = value.exists
+        return lambda e: _has_value(resolve_field(e, field)) is expected
+    test = _scalar_test(value)
+
+    def predicate(event: Event) -> bool:
+        actual = resolve_field(event, field)
+        if _is_null(actual):
+            return False
+        if isinstance(actual, list):
+            return any(item is not None and test(item) for item in actual)
+        return test(actual)
+
+    return predicate
+
+
+def _scalars(node: Any) -> Iterator[Any]:
+    if isinstance(node, Mapping):
+        for child in node.values():
+            yield from _scalars(child)
+    elif isinstance(node, list):
+        for child in node:
+            yield from _scalars(child)
+    elif node is not None:
+        yield node
+
+
+def _keyword_predicate(value: Any) -> Predicate:
+    """Keywords are a full-text search: an unanchored match against any scalar value."""
+    values = value.values if isinstance(value, SigmaExpansion) else [value]
+    strings = [v for v in values if isinstance(v, SigmaString)]
+    if len(strings) != len(values):
+        raise UnsupportedFeatureError("keyword detections support string values only")
+    tests = [_string_test(v, anchored=False) for v in strings]
+    return lambda e: any(t(s) for s in _scalars(e) for t in tests)
+
+
+def _compile(node: Any) -> Predicate:
     if isinstance(node, ConditionAND):
-        return all(_eval(arg, event) for arg in node.args)
+        parts = [_compile(arg) for arg in node.args]
+        return lambda e: all(p(e) for p in parts)
     if isinstance(node, ConditionOR):
-        return any(_eval(arg, event) for arg in node.args)
+        parts = [_compile(arg) for arg in node.args]
+        return lambda e: any(p(e) for p in parts)
     if isinstance(node, ConditionNOT):
-        return not _eval(node.args[0], event)
+        (inner,) = [_compile(arg) for arg in node.args]
+        return lambda e: not inner(e)
     if isinstance(node, ConditionFieldEqualsValueExpression):
-        _, event_value = _resolve_field(event, node.field)
-        return _match_value(event_value, node.value)
+        return _field_predicate(node.field, node.value)
     if isinstance(node, ConditionValueExpression):
-        return _match_keyword(event, node.value)
+        return _keyword_predicate(node.value)
     raise UnsupportedFeatureError(f"unsupported condition construct: {type(node).__name__}")
 
 
-def matches(rule: SigmaRule, event: dict[str, Any]) -> bool:
-    """Return True if ``event`` triggers ``rule``."""
-    condition = rule.detection.parsed_condition[0].parse()
-    return _eval(condition, event)
+class RuleMatcher:
+    """A Sigma rule compiled once for repeated evaluation.
+
+    Every condition of the rule is compiled; an event matches when any
+    condition holds (pySigma backends emit one query per condition).
+    """
+
+    def __init__(self, rule: SigmaRule) -> None:
+        self.rule = rule
+        self._conditions = [_compile(c.parse()) for c in rule.detection.parsed_condition]
+
+    def __call__(self, event: Event) -> bool:
+        return any(condition(event) for condition in self._conditions)
 
 
-def load_collection(path: Path) -> SigmaCollection:
-    return SigmaCollection.from_yaml(Path(path).read_text(encoding="utf-8"))
+def matches(rule: SigmaRule, event: Event) -> bool:
+    """One-off convenience wrapper around :class:`RuleMatcher`."""
+    return RuleMatcher(rule)(event)
 
 
-def load_rule(path: Path) -> SigmaRule:
-    return _first_plain_rule(load_collection(path), path)
+# --- correlations ----------------------------------------------------------------
 
 
-def _first_plain_rule(collection: SigmaCollection, path: Path) -> SigmaRule:
-    rule = collection.rules[0]
-    if not isinstance(rule, SigmaRule):
-        raise UnsupportedFeatureError(
-            f"{path} is not a plain Sigma rule (use correlation_triggers for correlations)"
-        )
-    return rule
+class WindowModel(enum.StrEnum):
+    """How a correlation ``timespan`` partitions time.
+
+    SLIDING: any half-open interval ``[t, t + timespan)`` starting at an event.
+    TUMBLING: fixed, epoch-aligned ``[k * timespan, (k + 1) * timespan)`` buckets,
+    which is what the generated SPL does with ``bin _time span=<timespan>``.
+    """
+
+    SLIDING = "sliding"
+    TUMBLING = "tumbling"
 
 
-# --- correlation evaluation ----------------------------------------------
-
-
-def _parse_ts(event: dict[str, Any]) -> float:
-    """Parse an event timestamp to epoch seconds (0.0 if absent/unparseable)."""
-    raw = event.get("timestamp")
-    if not isinstance(raw, str):
-        return 0.0
-    try:
-        return datetime.fromisoformat(raw.replace("Z", "+00:00")).timestamp()
-    except ValueError:
-        return 0.0
-
-
-def _compare(value: float, op: CorrOp, threshold: float) -> bool:
-    return {
-        CorrOp.GT: value > threshold,
-        CorrOp.GTE: value >= threshold,
-        CorrOp.LT: value < threshold,
-        CorrOp.LTE: value <= threshold,
-        CorrOp.EQ: value == threshold,
-        CorrOp.NEQ: value != threshold,
-    }[op]
-
-
-MAX_FIXTURE_EVENTS = 5_000
-MAX_FIXTURE_BYTES = 5 * 1024 * 1024
 MAX_CORRELATION_GROUP_EVENTS = 5_000
 
-
-def _check_fixture_size(events: list[dict[str, Any]], path: Path) -> None:
-    """Refuse unexpectedly large synthetic fixtures before CI spends time on them."""
-    if len(events) > MAX_FIXTURE_EVENTS:
-        raise UnsupportedFeatureError(
-            f"{path} has {len(events)} events; maximum supported fixture size is "
-            f"{MAX_FIXTURE_EVENTS}"
-        )
-
-
-def _check_correlation_group_size(evs: list[dict[str, Any]]) -> None:
-    """Bound per-group correlation work for untrusted rules and fixtures."""
-    if len(evs) > MAX_CORRELATION_GROUP_EVENTS:
-        raise UnsupportedFeatureError(
-            f"correlation group has {len(evs)} events; maximum supported group size is "
-            f"{MAX_CORRELATION_GROUP_EVENTS}"
-        )
+_CORRELATION_OPS: dict[CorrelationOp, Callable[[float, float], bool]] = {
+    CorrelationOp.GT: lambda a, b: a > b,
+    CorrelationOp.GTE: lambda a, b: a >= b,
+    CorrelationOp.LT: lambda a, b: a < b,
+    CorrelationOp.LTE: lambda a, b: a <= b,
+    CorrelationOp.EQ: lambda a, b: a == b,
+    CorrelationOp.NEQ: lambda a, b: a != b,
+}
 
 
-def _window_measures(
-    items: list[tuple[float, dict[str, Any]]],
-    span: float,
-    fieldref: str | None,
-):
-    """Yield maximal sliding-window counts without materializing window slices.
+def _correlation_value(event: Event, field: str) -> str | None:
+    """A group-by or counted value as Splunk sees it: a string, or None when unset."""
+    value = resolve_field(event, field)
+    if _is_null(value):
+        return None
+    if isinstance(value, Mapping | list):
+        raise UnsupportedFeatureError(f"correlation field {field!r} must hold a scalar value")
+    return str(value)
 
-    One maximal window is examined for each timestamp-sorted start event, matching
-    the previous correlation semantics while keeping CPU and memory linear after
-    sorting. For value_count correlations, a moving Counter tracks distinct field
-    values incrementally instead of rebuilding a set for each overlapping window.
-    """
-    items = sorted(items, key=lambda x: x[0])
-    counts: Counter[Any] = Counter()
-    right = 0
 
-    for left, (start_ts, start_event) in enumerate(items):
-        while right < len(items) and items[right][0] - start_ts <= span:
-            if fieldref is not None:
-                counts[_resolve_field(items[right][1], fieldref)[1]] += 1
-            right += 1
-
-        if fieldref is None:
-            yield float(right - left)
+def event_time(event: Event) -> float:
+    """Epoch seconds of an event's ``timestamp`` (ISO-8601; naive times are UTC)."""
+    raw = event.get("timestamp")
+    if isinstance(raw, str):
+        try:
+            parsed = datetime.fromisoformat(raw)
+        except ValueError:
+            pass
         else:
-            yield float(len(counts))
-
-            value = _resolve_field(start_event, fieldref)[1]
-            counts[value] -= 1
-            if counts[value] <= 0:
-                del counts[value]
+            return (parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)).timestamp()
+    raise UnsupportedFeatureError(
+        f"correlation events need an ISO-8601 'timestamp' string, got {raw!r}"
+    )
 
 
-def correlation_triggers(collection: SigmaCollection, events: list[dict[str, Any]]) -> bool:
-    """Evaluate a Sigma correlation rule (event_count / value_count) over an event set."""
-    corr = next((r for r in collection.rules if isinstance(r, SigmaCorrelationRule)), None)
-    if corr is None:
-        raise UnsupportedFeatureError("no correlation rule found in collection")
-    if corr.type not in (SigmaCorrelationType.EVENT_COUNT, SigmaCorrelationType.VALUE_COUNT):
-        raise UnsupportedFeatureError(f"unsupported correlation type: {corr.type.name}")
+class CorrelationMatcher:
+    """A ``event_count`` / ``value_count`` correlation compiled for evaluation."""
 
-    # Only the base rules this correlation actually references (not every rule in
-    # the collection), so an unrelated rule in the same file can't trigger it.
-    bases: list[SigmaRule] = []
-    for ref in corr.rules or []:
-        ref_rule = getattr(ref, "rule", None)
-        if isinstance(ref_rule, SigmaRule):
-            bases.append(ref_rule)
-    if not bases:
-        bases = [r for r in collection.rules if isinstance(r, SigmaRule)]
-    matched = [e for e in events if any(matches(b, e) for b in bases)]
+    def __init__(self, correlation: SigmaCorrelationRule) -> None:
+        if correlation.type not in (
+            SigmaCorrelationType.EVENT_COUNT,
+            SigmaCorrelationType.VALUE_COUNT,
+        ):
+            raise UnsupportedFeatureError(f"unsupported correlation type: {correlation.type.name}")
+        if len(correlation.aliases):
+            raise UnsupportedFeatureError("correlation field aliases are not supported")
+        condition = correlation.condition
+        if not isinstance(condition, SigmaCorrelationCondition):
+            raise UnsupportedFeatureError("extended correlation conditions are not supported")
+        self.value_field: str | None = None
+        if correlation.type is SigmaCorrelationType.VALUE_COUNT:
+            if not isinstance(condition.fieldref, str):
+                raise UnsupportedFeatureError("value_count correlations need a single 'field'")
+            self.value_field = condition.fieldref
 
-    condition = corr.condition
-    if not isinstance(condition, SigmaCorrelationCondition):
-        raise UnsupportedFeatureError("extended correlation conditions are not supported")
+        bases = [ref.rule for ref in correlation.rules or []]
+        if not bases or not all(isinstance(base, SigmaRule) for base in bases):
+            raise UnsupportedFeatureError("correlations must reference plain Sigma rules")
+        self._bases = [RuleMatcher(base) for base in bases if isinstance(base, SigmaRule)]
+        self.group_by = tuple(g for g in correlation.group_by or [] if isinstance(g, str))
+        self.span = float(correlation.timespan.seconds) if correlation.timespan else math.inf
+        if self.span <= 0:
+            raise UnsupportedFeatureError("correlation timespan must be positive")
+        self._compare = _CORRELATION_OPS[condition.op]
+        self.threshold = float(condition.count)
 
-    group_by = [g for g in (corr.group_by or []) if isinstance(g, str)]
-    span = float(corr.timespan.seconds) if corr.timespan else float("inf")
-    op, threshold = condition.op, float(condition.count)
-    fieldref = condition.fieldref
+    def triggers(self, events: Iterable[Event], window: WindowModel) -> bool:
+        groups: dict[tuple[str | None, ...], list[tuple[float, Event]]] = defaultdict(list)
+        for event in events:
+            if not any(base(event) for base in self._bases):
+                continue
+            key = tuple(_correlation_value(event, g) for g in self.group_by)
+            # Like Splunk's `stats ... by`, events without a group-by value are dropped.
+            if None in key:
+                continue
+            groups[key].append((event_time(event), event))
 
-    groups: dict[tuple, list[dict[str, Any]]] = {}
-    for e in matched:
-        key = tuple(_resolve_field(e, g)[1] for g in group_by)
-        groups.setdefault(key, []).append(e)
-
-    if corr.type == SigmaCorrelationType.VALUE_COUNT and not isinstance(fieldref, str):
-        raise UnsupportedFeatureError("value_count correlation requires a single 'field'")
-
-    for evs in groups.values():
-        _check_correlation_group_size(evs)
-        timed = [(_parse_ts(e), e) for e in evs]
-        value_field: str | None = (
-            fieldref
-            if corr.type == SigmaCorrelationType.VALUE_COUNT and isinstance(fieldref, str)
-            else None
-        )
-        for measure in _window_measures(timed, span, value_field):
-            if _compare(measure, op, threshold):
+        for members in groups.values():
+            if len(members) > MAX_CORRELATION_GROUP_EVENTS:
+                raise UnsupportedFeatureError(
+                    f"correlation group has {len(members)} events; the maximum is "
+                    f"{MAX_CORRELATION_GROUP_EVENTS}"
+                )
+            members.sort(key=lambda item: item[0])
+            measures: Iterable[float] = (
+                self._tumbling(members)
+                if window is WindowModel.TUMBLING
+                else self._sliding(members)
+            )
+            if any(self._compare(measure, self.threshold) for measure in measures):
                 return True
-    return False
+        return False
 
+    def _value(self, event: Event) -> str | None:
+        assert self.value_field is not None
+        return _correlation_value(event, self.value_field)
 
-# --- fire-test orchestration ----------------------------------------------
+    def _measure(self, window_events: Sequence[Event]) -> float:
+        if self.value_field is None:
+            return float(len(window_events))
+        return float(len({v for v in map(self._value, window_events) if v is not None}))
 
+    def _tumbling(self, members: Sequence[tuple[float, Event]]) -> list[float]:
+        if math.isinf(self.span):
+            return [self._measure([e for _, e in members])]
+        buckets: dict[int, list[Event]] = defaultdict(list)
+        for ts, event in members:
+            buckets[math.floor(ts / self.span)].append(event)
+        return [self._measure(bucket) for bucket in buckets.values()]
 
-@dataclass
-class FireTestReport:
-    name: str
-    positives_total: int = 0
-    positives_matched: int = 0
-    negatives_total: int = 0
-    negatives_clean: int = 0  # negatives that correctly did NOT match
-    skipped: bool = False
-
-    @property
-    def passed(self) -> bool:
-        return (
-            not self.skipped
-            and self.positives_matched == self.positives_total
-            and self.negatives_clean == self.negatives_total
-            and self.positives_total > 0
-        )
-
-
-def _sample_path(rule_path: Path, polarity: str) -> Path:
-    rule_path = Path(rule_path)
-    sub = rule_path.parent.name  # classic / llm / correlation
-    return REPO_ROOT / "sample_logs" / sub / f"{rule_path.stem}.{polarity}.json"
-
-
-def _load_events(path: Path) -> list[dict[str, Any]]:
-    if not path.exists():
-        return []
-    # Byte cap before parsing: the event-count cap alone would let one huge
-    # event (or string) exhaust memory inside json.loads first.
-    size = path.stat().st_size
-    if size > MAX_FIXTURE_BYTES:
-        raise UnsupportedFeatureError(
-            f"{path} is {size} bytes; maximum supported fixture size is {MAX_FIXTURE_BYTES} bytes"
-        )
-    data = json.loads(path.read_text(encoding="utf-8"))
-    events = data if isinstance(data, list) else [data]
-    _check_fixture_size(events, path)
-    return events
-
-
-def fire_test(rule_path: Path) -> FireTestReport:
-    rule_path = Path(rule_path)
-    report = FireTestReport(name=rule_path.stem)
-
-    positives = _load_events(_sample_path(rule_path, "positive"))
-    negatives = _load_events(_sample_path(rule_path, "negative"))
-    if not positives and not negatives:
-        report.skipped = True
-        return report
-
-    collection = load_collection(rule_path)
-    if any(isinstance(r, SigmaCorrelationRule) for r in collection.rules):
-        # Each fixture file is ONE scenario: the positive set must trigger the
-        # correlation, the negative set must not.
-        report.positives_total = 1
-        report.positives_matched = 1 if correlation_triggers(collection, positives) else 0
-        report.negatives_total = 1
-        report.negatives_clean = 0 if correlation_triggers(collection, negatives) else 1
-        return report
-
-    rule = _first_plain_rule(collection, rule_path)
-    report.positives_total = len(positives)
-    report.positives_matched = sum(1 for e in positives if matches(rule, e))
-    report.negatives_total = len(negatives)
-    report.negatives_clean = sum(1 for e in negatives if not matches(rule, e))
-    return report
-
-
-def fire_test_all(paths: list[Path] | None = None) -> list[FireTestReport]:
-    return [fire_test(f) for f in iter_rule_files(paths)]
+    def _sliding(self, members: Sequence[tuple[float, Event]]) -> Iterator[float]:
+        """One window per start event, advanced in linear time after sorting."""
+        distinct: Counter[str] = Counter()
+        right = 0
+        for left, (start, start_event) in enumerate(members):
+            while right < len(members) and members[right][0] - start < self.span:
+                if self.value_field is not None:
+                    value = self._value(members[right][1])
+                    if value is not None:
+                        distinct[value] += 1
+                right += 1
+            if self.value_field is None:
+                yield float(right - left)
+                continue
+            yield float(len(distinct))
+            value = self._value(start_event)
+            if value is not None:
+                distinct[value] -= 1
+                if distinct[value] <= 0:
+                    del distinct[value]

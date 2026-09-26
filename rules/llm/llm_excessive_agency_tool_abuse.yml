@@ -1,17 +1,18 @@
-title: LLM Excessive Agency — Sensitive Tool Invocation
+title: LLM Agent Invokes a High-Impact Tool Against an Internal Host
 id: b483d364-66ff-4813-a542-25a8a630c693
 status: experimental
 description: >
-  Detects an LLM-driven agent invoking a high-impact tool (shell/command
-  execution, file deletion, email send, or HTTP request) against an internal
-  or metadata host, indicating excessive agency / unsafe tool use. Maps to
-  OWASP Top 10 for LLM Applications LLM06 (Excessive Agency) and MITRE ATLAS
-  AI Agent Tool Invocation. Uses the synthetic tool.* fields of the llm_app
-  schema.
+  Detects an LLM-driven agent invoking a high-impact tool (shell or command
+  execution, file deletion, email, or HTTP requests) against a loopback,
+  private (RFC 1918), internal-domain, or cloud instance-metadata host, which
+  indicates excessive agency or a hijacked agent. Maps to OWASP LLM06
+  (Excessive Agency) and MITRE ATLAS AI Agent Tool Invocation. Uses the
+  synthetic tool.* fields of the llm_app schema.
 author: sigma-forge
 date: 2026-06-03
+modified: 2026-09-26
 references:
-  - https://owasp.org/www-project-top-10-for-large-language-model-applications/
+  - https://genai.owasp.org/llmrisk/llm062025-excessive-agency/
   - https://atlas.mitre.org/techniques/AML.T0053
 logsource:
   product: llm_app
@@ -25,12 +26,11 @@ detection:
       - 'send_email'
       - 'http_request'
   selection_target:
-    tool.target_host|re: '(?i)(\.internal\b|\.local\b|^10\.|^172\.(1[6-9]|2[0-9]|3[0-1])\.|^192\.168\.|^169\.254\.169\.254$)'
+    tool.target_host|re: '(?i)(\.internal\b|\.local\b|^localhost$|^127\.|^10\.|^172\.(1[6-9]|2[0-9]|3[0-1])\.|^192\.168\.|^169\.254\.169\.254$)'
   condition: selection_tool and selection_target
 falsepositives:
-  - Sanctioned automations that legitimately call internal tools; allowlist them.
+  - Sanctioned automations that call internal tools; allowlist them by app.id.
 level: high
 tags:
-  - attack.execution
   - owasp.llm06
   - atlas.t0053

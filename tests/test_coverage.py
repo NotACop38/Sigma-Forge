@@ -1,108 +1,85 @@
-"""Coverage tests: the Navigator layer is valid v4.x JSON with real technique IDs."""
+"""Coverage aggregation, the Navigator layer, the SVG card, and artifact freshness."""
 
 from __future__ import annotations
 
-import re
+import xml.etree.ElementTree as ET
+from pathlib import Path
 
-import pytest
+from sigmaforge import coverage
+from sigmaforge.workspace import Workspace, load_rule
+from tests.support import REPO_ROOT, make_rule, rule_yaml
 
-from sigmaforge import coverage as cov
-
-_TECH = re.compile(r"^T\d{4}(\.\d{3})?$")
-
-
-def test_collects_real_attack_techniques():
-    data = cov.collect_coverage()
-    assert data.attack_technique_count >= 3
-    for tech in data.technique_rules:
-        assert _TECH.match(tech), f"{tech} is not a valid ATT&CK technique ID"
+REPO_COVERAGE = coverage.collect(load_rule(p) for p in Workspace(REPO_ROOT).rule_paths())
 
 
-def test_techniques_pair_with_their_canonical_tactic():
-    """A rule tagging several tactics must not smear them across all its techniques.
-
-    win_encoded_powershell tags execution + defense-evasion for T1059.001 + T1027;
-    T1027 is canonically Defense Evasion only, and T1105 (certutil) is Command and
-    Control only — the heatmap previously labelled both with the wrong tactic.
-    """
-    data = cov.collect_coverage()
-    assert data.technique_tactics["T1027"] == {"defense-evasion"}
-    assert data.technique_tactics["T1059.001"] == {"execution"}
-    assert data.technique_tactics["T1105"] == {"command-and-control"}
-    assert data.technique_tactics["T1140"] == {"defense-evasion"}
+def test_committed_artifacts_are_up_to_date() -> None:
+    files = coverage.artifacts(
+        REPO_COVERAGE, REPO_ROOT / "docs/attack-layer.json", REPO_ROOT / "docs/images/coverage.svg"
+    )
+    stale = coverage.stale_artifacts(files)
+    assert not stale, f"regenerate with `make coverage`: {stale}"
 
 
-def test_layer_is_valid_navigator_v4():
-    layer = cov.build_layer(cov.collect_coverage())
+def test_a_correlation_file_counts_as_one_detection() -> None:
+    names = [d.name for d in REPO_COVERAGE.detections]
+    assert len(names) == len(set(names))
+    burst = next(d for d in REPO_COVERAGE.detections if d.name == "llm_prompt_injection_burst")
+    assert burst.title == "Repeated Prompt Injection Attempts by One User"
+    assert burst.owasp == {"LLM01"}
+
+
+def test_unknown_or_malformed_tags_are_left_out() -> None:
+    rule = make_rule(
+        rule_yaml(
+            "sel:\n  Image: x\ncondition: sel",
+            tags=["attack.t1059.001", "attack.t9999", "atlas.t9999", "owasp.llm42"],
+        )
+    )
+    (detection,) = coverage.collect([rule]).detections
+    assert detection.attack == {"T1059.001"}
+    assert not detection.atlas
+    assert not detection.owasp
+
+
+def test_navigator_layer() -> None:
+    layer = coverage.navigator_layer(REPO_COVERAGE)
     assert layer["domain"] == "enterprise-attack"
-    assert layer["versions"]["layer"].startswith("4.")
-    assert layer["techniques"], "layer has no techniques"
-    for t in layer["techniques"]:
-        assert _TECH.match(t["techniqueID"])
-        assert isinstance(t["score"], int)
+    assert layer["versions"] == {"attack": "19", "navigator": "5.3.2", "layer": "4.5"}
+    scored = {t["techniqueID"]: t for t in layer["techniques"] if "score" in t}
+    assert set(scored) == set(REPO_COVERAGE.attack)
+    assert all(isinstance(t["score"], int) and t["score"] >= 1 for t in scored.values())
+    expanded = {t["techniqueID"] for t in layer["techniques"] if t.get("showSubtechniques")}
+    assert expanded == {t.split(".")[0] for t in scored if "." in t}
 
 
-def test_build_coverage_writes_files(tmp_path):
-    layer = tmp_path / "layer.json"
-    png = tmp_path / "img" / "heat.png"
-    summary = cov.build_coverage(layer_path=layer, png_path=png)
-    assert layer.exists() and png.exists()
-    assert summary.attack_technique_count >= 3
+def test_svg_is_well_formed_deterministic_and_labelled() -> None:
+    svg = coverage.render_svg(REPO_COVERAGE)
+    assert svg == coverage.render_svg(REPO_COVERAGE)
+    root = ET.fromstring(svg)
+    assert root.get("role") == "img"
+    text = "".join(root.itertext())
+    for technique in [*REPO_COVERAGE.attack, *REPO_COVERAGE.atlas, *REPO_COVERAGE.owasp]:
+        assert technique in text
 
 
-def test_build_site_emits_pages_bundle(tmp_path):
-    site = tmp_path / "_site"
-    summary = cov.build_site(site)
-    for name in ("index.html", "attack-layer.png", "attack-layer.json"):
-        assert (site / name).exists(), f"missing {name}"
-    html = (site / "index.html").read_text(encoding="utf-8")
-    assert str(summary.attack_technique_count) in html
+def test_empty_coverage_renders() -> None:
+    svg = coverage.render_svg(coverage.Coverage(()))
+    assert "no techniques tagged" in svg
+    ET.fromstring(svg)
 
 
-def test_build_site_refreshes_previous_bundle(tmp_path):
-    """A directory holding only a previous site bundle is cleaned and rebuilt."""
-    site = tmp_path / "_site"
-    cov.build_site(site)
-    (site / "attack-layer.json").write_text("stale", encoding="utf-8")
-
-    cov.build_site(site)
-
-    assert (site / "attack-layer.json").read_text(encoding="utf-8") != "stale"
-    assert sorted(path.name for path in site.iterdir()) == [
-        "attack-layer.json",
-        "attack-layer.png",
-        "index.html",
+def test_wrap_truncates_long_text() -> None:
+    assert coverage._wrap("Command and Scripting Interpreter", 12, 2) == [
+        "Command and",
+        "Scripting…",
     ]
+    assert coverage._wrap("Supercalifragilistic", 8, 1) == ["Superca…"]
 
 
-def test_build_site_refuses_directory_with_foreign_files(tmp_path):
-    """`--site docs` (or any populated dir) must refuse instead of rmtree'ing it."""
-    site = tmp_path / "docs"
-    site.mkdir()
-    precious = site / "threat-model.md"
-    precious.write_text("do not delete", encoding="utf-8")
-
-    with pytest.raises(ValueError, match="refusing to clean"):
-        cov.build_site(site)
-
-    assert precious.read_text(encoding="utf-8") == "do not delete"
-
-
-def test_build_site_replaces_symlink_before_writing(tmp_path):
-    target = tmp_path / "fake_checkout" / ".git"
-    target.mkdir(parents=True)
-    protected = target / "config"
-    protected.write_text("token-like checkout metadata", encoding="utf-8")
-    site = tmp_path / "_site"
-    site.symlink_to(target, target_is_directory=True)
-
-    if not site.is_symlink():
-        pytest.skip("filesystem does not support directory symlinks")
-
-    cov.build_site(site)
-
-    assert not site.is_symlink()
-    assert site.is_dir()
-    assert protected.read_text(encoding="utf-8") == "token-like checkout metadata"
-    assert not (target / "index.html").exists()
-    assert (site / "index.html").exists()
+def test_write_and_detect_stale_artifacts(tmp_path: Path) -> None:
+    files = coverage.artifacts(REPO_COVERAGE, tmp_path / "layer.json", tmp_path / "img/cov.svg")
+    assert coverage.stale_artifacts(files) == list(files)
+    coverage.write_artifacts(files)
+    assert coverage.stale_artifacts(files) == []
+    (tmp_path / "layer.json").write_text("{}", encoding="utf-8")
+    assert coverage.stale_artifacts(files) == [tmp_path / "layer.json"]

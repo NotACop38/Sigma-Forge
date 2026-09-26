@@ -1,2 +1,0 @@
-imProcessCreate
-| where TargetProcessName endswith "\\certutil.exe" and (TargetProcessCommandLine contains "urlcache" or TargetProcessCommandLine contains "verifyctl" or TargetProcessCommandLine contains "-decode" or TargetProcessCommandLine contains "/decode")

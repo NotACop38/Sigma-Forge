@@ -1,4 +1,20 @@
 [
-  {"EventID":1,"Image":"C:\\Windows\\System32\\vssadmin.exe","CommandLine":"vssadmin.exe delete shadows /all /quiet","ParentImage":"C:\\Windows\\System32\\cmd.exe"},
-  {"EventID":1,"Image":"C:\\Windows\\System32\\vssadmin.exe","CommandLine":"vssadmin delete shadows /for=C: /oldest","ParentImage":"C:\\Users\\Public\\evil.exe"}
+  {
+    "EventID": 1,
+    "Image": "C:\\Windows\\System32\\vssadmin.exe",
+    "CommandLine": "vssadmin.exe delete shadows /all /quiet",
+    "ParentImage": "C:\\Windows\\System32\\cmd.exe"
+  },
+  {
+    "EventID": 1,
+    "Image": "C:\\Windows\\System32\\vssadmin.exe",
+    "CommandLine": "vssadmin delete shadows /for=C: /oldest",
+    "ParentImage": "C:\\Users\\Public\\updater.exe"
+  },
+  {
+    "EventID": 1,
+    "Image": "C:\\Windows\\System32\\vssadmin.exe",
+    "CommandLine": "vssadmin.exe resize shadowstorage /for=C: /on=C: /maxsize=401MB",
+    "ParentImage": "C:\\Windows\\System32\\cmd.exe"
+  }
 ]

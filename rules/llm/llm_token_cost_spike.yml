@@ -3,16 +3,17 @@ id: 0cab2979-0451-48b0-bb5f-b1875d12e4d6
 status: experimental
 description: >
   Detects a single LLM request whose prompt or completion token count is far
-  above normal application traffic, an indicator of unbounded consumption /
-  denial-of-wallet abuse against a metered model endpoint. Maps to OWASP Top 10
-  for LLM Applications LLM10 (Unbounded Consumption) and MITRE ATLAS Cost
-  Harvesting / Denial of AI Service. Thresholds are illustrative for the
-  synthetic llm_app schema and should be tuned per environment.
+  above normal application traffic, an indicator of resource-intensive queries
+  that drive up cost (denial of wallet) or degrade a metered model endpoint.
+  Maps to OWASP LLM10 (Unbounded Consumption) and MITRE ATLAS Cost Harvesting:
+  Resource-Intensive Queries and Denial of AI Service. The 8000-token threshold
+  is illustrative; tune it to your application's baseline.
 author: sigma-forge
 date: 2026-06-03
+modified: 2026-09-26
 references:
-  - https://owasp.org/www-project-top-10-for-large-language-model-applications/
-  - https://atlas.mitre.org/techniques/AML.T0034
+  - https://genai.owasp.org/llmrisk/llm102025-unbounded-consumption/
+  - https://atlas.mitre.org/techniques/AML.T0034.001
   - https://atlas.mitre.org/techniques/AML.T0029
 logsource:
   product: llm_app
@@ -24,10 +25,9 @@ detection:
     llm.completion_tokens|gte: 8000
   condition: 1 of selection_*
 falsepositives:
-  - Legitimate large-context workloads (e.g. long-document summarization).
+  - Legitimate large-context workloads such as long-document summarization.
 level: medium
 tags:
-  - attack.impact
   - owasp.llm10
-  - atlas.t0034
+  - atlas.t0034.001
   - atlas.t0029
