@@ -7,10 +7,11 @@ This file is the operating contract for coding agents. Sigma-Forge authors defen
 - Employer-safe: author everything from PUBLIC sources (MITRE ATT&CK, OWASP Top 10 for LLM
   Applications, MITRE ATLAS). No real detections/configs/logs, no employer/customer names, no
   internal field/index names. All sample logs are SYNTHETIC and product-agnostic.
-- No secrets in the repo; add a gitleaks pre-commit hook and a CI secret scan; ship .env.example.
+- No secrets in the repo. Keep the gitleaks pre-commit hook and the CI secret scan passing, and keep
+  `.env.example` free of real values.
 - No live LLM/API calls in CI or tests — mock them. The offline core must run with ZERO API keys.
 - The optional drafter NEVER writes a rule that hasn't passed schema-lint -> conversion ->
-  fire-test; default it to a LOCAL endpoint.
+  fire-test, and it defaults to a LOCAL endpoint; keep that default.
 - Be transparent about tooling limits in the docs (especially KQL for the custom LLM logsource).
 
 ## Scope and context
